@@ -1,0 +1,8 @@
+{
+  "pickup": {
+    "name": "DPS Lost & Found",
+    "url": "https://dps.usc.edu/services/lost-and-found/",
+    "map": "https://www.google.com/maps/search/?api=1&query=USC+Department+of+Public+Safety",
+    "hours": null
+  }
+}

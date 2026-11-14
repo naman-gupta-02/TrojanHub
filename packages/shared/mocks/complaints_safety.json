@@ -1,0 +1,17 @@
+{
+  "draft": {
+    "department": "DPS",
+    "category": "safety",
+    "urgency": "safety",
+    "building": "GFS",
+    "building_id": "b0000000-0000-0000-0000-000000000001",
+    "room": "213",
+    "summary": "Possible gas smell",
+    "confidence": 0.97,
+    "reason": "mentions gas smell -> safety"
+  },
+  "safety": {
+    "dps_phone": "[MOCK] copy the number from https://dps.usc.edu/contact/",
+    "message": "This sounds like a safety issue. Contact USC DPS now, or call 911 in an emergency."
+  }
+}

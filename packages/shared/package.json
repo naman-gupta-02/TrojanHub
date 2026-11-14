@@ -2,7 +2,17 @@
   "name": "@trojanhub/shared",
   "private": true,
   "version": "0.1.0",
-  "description": "Shared TS types, zod schemas, API client and theme for mobile + web",
+  "description": "Shared TS types, API client and theme for mobile + web",
   "main": "index.ts",
-  "types": "index.ts"
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./types": "./types.ts",
+    "./api": "./api.ts",
+    "./theme": "./theme.ts",
+    "./mocks/*": "./mocks/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
 }

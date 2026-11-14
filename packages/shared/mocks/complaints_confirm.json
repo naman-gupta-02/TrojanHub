@@ -1,0 +1,16 @@
+{
+  "ticket": {
+    "id": "00000000-0000-0000-0000-0000000000a1",
+    "building_id": "b0000000-0000-0000-0000-000000000001",
+    "room": "213",
+    "department": "Facilities",
+    "category": "HVAC",
+    "urgency": "medium",
+    "summary": "Room is too hot; AC may not be working",
+    "status": "reported",
+    "report_count": 5,
+    "route_url": "https://fpm.usc.edu/customer-guide-to-services/",
+    "created_at": "2026-11-14T17:00:00Z"
+  },
+  "route_url": "https://fpm.usc.edu/customer-guide-to-services/"
+}

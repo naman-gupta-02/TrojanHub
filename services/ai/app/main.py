@@ -1,11 +1,14 @@
-"""TrojanHub AI service: app, CORS and router mounting (owned by P4).
+"""TrojanHub AI service: app, CORS, error format and router mounting (owned by P4).
 
 Run from services/ai:  uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Swagger docs:          http://localhost:8000/docs
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException  # also catches routing 404/405s
 
 from app.admin.routes import router as admin_router
 from app.chat.routes import router as chat_router
@@ -20,10 +23,31 @@ app = FastAPI(title="TrojanHub AI", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Every error is {error: {code, message}} (ARCHITECTURE.md §8)
+@app.exception_handler(HTTPException)
+async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
+    if isinstance(exc.detail, dict) and "code" in exc.detail:
+        body = exc.detail
+    else:
+        body = {"code": f"http_{exc.status_code}", "message": str(exc.detail)}
+    return JSONResponse({"error": body}, status_code=exc.status_code, headers=getattr(exc, "headers", None))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    first = exc.errors()[0] if exc.errors() else {}
+    where = ".".join(str(p) for p in first.get("loc", []))
+    return JSONResponse(
+        {"error": {"code": "validation_error", "message": f"{where}: {first.get('msg', 'invalid request')}"}},
+        status_code=422,
+    )
 
 
 @app.get("/health")

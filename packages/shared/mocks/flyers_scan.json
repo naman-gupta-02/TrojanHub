@@ -1,0 +1,20 @@
+{
+  "type": "event",
+  "fields": {
+    "title": "[MOCK] Diwali Night",
+    "starts_at": "2026-11-21T03:00:00Z",
+    "ends_at": null,
+    "location_text": "TCC Grand Ballroom",
+    "building_id": "b0000000-0000-0000-0000-000000000009",
+    "is_free": false,
+    "has_freebie": false,
+    "freebie_desc": null,
+    "register_url": null,
+    "org_name": "[MOCK] South Asian student org",
+    "category": "cultural"
+  },
+  "missing": [
+    "ends_at",
+    "register_url"
+  ]
+}
