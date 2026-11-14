@@ -30,6 +30,19 @@ Flip `USE_MOCKS=false` when your endpoint is real.
 - LLM: `from app.core.llm import get_client, get_vision_client, model_name` (OpenAI-compatible, provider set by env).
 - Errors: `raise HTTPException(status, detail={"code": "...", "message": "..."})` becomes `{error: {code, message}}`.
 
+## Tommy (P1): build the USC index and test
+
+```bash
+python -m scripts.scrape.crawl     # ~1 min: fetch the 49 pages in seeds.yaml (polite, 1 req/s)
+python -m scripts.scrape.chunk     # split into ~500-token chunks + extract contacts
+python -m scripts.scrape.embed     # MiniLM embeddings -> local index (+ Supabase doc_chunks if configured)
+python -m evals.run                # retrieval evals, no LLM needed (--sweep to tune the threshold)
+python -m evals.run --chat         # full answers, needs LLM_MODEL
+python -m pytest tests -q          # agent + tools + confirm flow with a fake LLM
+```
+
+`/api/chat` uses the real agent as soon as `LLM_MODEL` is set, and the mock stream until then.
+
 ## Layout
 
 | Folder | Owner |

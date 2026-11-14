@@ -1,0 +1,20 @@
+{"id": "pantry_hours", "question": "When is the food pantry open?", "expected_url": "https://studentbasicneeds.usc.edu/programs-and-services/food-support/trojan-food-pantry/", "expected_facts": ["10:00 AM", "2:00 PM"]}
+{"id": "pantry_location", "question": "where is the trojan food pantry located", "expected_url": "https://studentbasicneeds.usc.edu/programs-and-services/food-support/trojan-food-pantry/", "expected_facts": ["King Hall"]}
+{"id": "pantry_bring", "question": "what do I need to bring to the food pantry?", "expected_url": "https://studentbasicneeds.usc.edu/programs-and-services/food-support/trojan-food-pantry/", "expected_facts": ["USCard"]}
+{"id": "dps_emergency", "question": "What's the DPS emergency number on the main campus?", "expected_url": "https://dps.usc.edu/contact/", "expected_contacts": ["213-740-4321"]}
+{"id": "dps_nonemergency", "question": "non-emergency number for campus police", "expected_url": "https://dps.usc.edu/contact/", "expected_contacts": ["213-740-6000"]}
+{"id": "lost_item", "question": "I lost my wallet on campus, who do I call?", "expected_url": "https://dps.usc.edu/services/lost-and-found/", "expected_contacts": ["213-740-9759", "lostandfound@dps.usc.edu"]}
+{"id": "lost_how_long", "question": "how long does DPS keep found items?", "expected_url": "https://dps.usc.edu/services/lost-and-found/", "expected_facts": ["90 days"]}
+{"id": "its_phone", "question": "What's the phone number for IT help?", "expected_url": "https://itservices.usc.edu/about/contact/", "expected_contacts": ["213-740-5555"]}
+{"id": "phishing", "question": "where do I report a phishing email?", "expected_url": "https://itservices.usc.edu/about/contact/", "expected_contacts": ["phishing@usc.edu"]}
+{"id": "health_hours", "question": "what time does the Engemann student health center close?", "expected_url": "https://studenthealth.usc.edu/hours/", "expected_facts": ["7 PM"]}
+{"id": "village_dining", "question": "what's the phone number of the USC Village dining hall?", "expected_url": "https://hospitality.usc.edu/dining-locations/usc-village-dining-hall/", "expected_contacts": ["213.764.7925"]}
+{"id": "lax_shuttle", "question": "Is there a shuttle to LAX for Thanksgiving?", "expected_url": "https://dps.usc.edu/services/shuttles/", "expected_facts": ["Widney Alumni House"]}
+{"id": "meal_plans", "question": "do freshmen have to get a meal plan?", "expected_url": "https://housing.usc.edu/index.php/residential-meal-plans/", "expected_facts": ["Cardinal Plan"]}
+{"id": "emergency_loan", "question": "can I get an emergency loan as a student?", "expected_url": "https://campussupport.usc.edu/students/emergency-loan-application/", "expected_contacts": ["uscsupport@usc.edu"]}
+{"id": "tutoring", "question": "where can I get free tutoring or study skills help?", "expected_url": "https://kortschakcenter.usc.edu/", "expected_facts": ["Room 311"]}
+{"id": "osas_dropin", "question": "when are the accessibility services drop-in hours?", "expected_url": "https://osas.usc.edu/", "expected_facts": ["10 am"]}
+{"id": "parking_maint", "question": "the elevator in the parking structure is broken, how do I report it?", "expected_url": "https://transnet.usc.edu/index.php/report-a-maintenance-issue/"}
+{"id": "no_answer_1", "question": "what is the wifi password for the football stadium?", "expected_url": null}
+{"id": "no_answer_2", "question": "who won the super bowl last year?", "expected_url": null}
+{"id": "no_answer_3", "question": "what's the best pizza place in Koreatown?", "expected_url": null}

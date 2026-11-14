@@ -3,8 +3,9 @@
 POST /chat           {session_id, message, image_url?} -> SSE stream
 POST /chat/confirm   {session_id, action_id, approved, edits?}
 
-Phase 0: with USE_MOCKS=true both endpoints serve packages/shared/mocks/chat_stream.json,
-so the chat UI (mobile + web) can be built before the real agent exists.
+Real agent when LLM_MODEL is set (its tools call the other endpoints, which may still be
+mocks). With no LLM configured, /chat streams packages/shared/mocks/chat_stream.json so the chat
+UI can be built anyway.
 """
 
 import asyncio
@@ -13,10 +14,13 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.chat import store
+from app.chat.agent import run_turn
+from app.chat.tools.runner import run_confirmed
 from app.core.auth import get_user_id
 from app.core.config import settings
 from app.core.mocks import load_mock
@@ -61,24 +65,40 @@ async def _mock_stream(req: ChatRequest) -> AsyncIterator[str]:
         await asyncio.sleep(MOCK_TOKEN_DELAY)
 
 
+async def _agent_stream(req: ChatRequest, user_id: str, authorization: str | None) -> AsyncIterator[str]:
+    async for event in run_turn(req.session_id, req.message, user_id, authorization, req.image_url):
+        yield _sse(event)
+
+
+def _agent_enabled() -> bool:
+    return bool(settings.llm_model)
+
+
 @router.post("/chat")
-async def chat(req: ChatRequest, user_id: str = Depends(get_user_id)) -> StreamingResponse:
-    if not settings.use_mocks:
-        # TODO(P1, Phase 1): agent loop -> LLM + tools -> stream tokens/sources.
-        raise HTTPException(501, detail={"code": "not_implemented", "message": "Real agent not built yet"})
-    return StreamingResponse(
-        _mock_stream(req),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+async def chat(
+    req: ChatRequest, user_id: str = Depends(get_user_id), authorization: str | None = Header(default=None)
+) -> StreamingResponse:
+    stream = _agent_stream(req, user_id, authorization) if _agent_enabled() else _mock_stream(req)
+    return StreamingResponse(stream, media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.post("/chat/confirm")
 async def chat_confirm(req: ConfirmRequest, user_id: str = Depends(get_user_id)) -> dict:
-    if not settings.use_mocks:
-        # TODO(P1, Phase 2): look up the pending draft by action_id and call the owner's endpoint.
-        raise HTTPException(501, detail={"code": "not_implemented", "message": "Confirm not built yet"})
+    action = store.pop_pending(req.action_id, req.session_id, user_id)
+    if action is None:
+        if not _agent_enabled():  # mock chat stream -> mock confirm
+            if not req.approved:
+                return {"action_id": req.action_id, "status": "cancelled", "message": "No problem, I didn't file anything."}
+            mock = {k: v for k, v in load_mock("chat_stream")["confirm_response"].items() if not k.startswith("_")}
+            return {**mock, "action_id": req.action_id}
+        raise HTTPException(404, detail={"code": "not_found", "message": "That card expired. Ask Tommy again."})
+
     if not req.approved:
-        return {"action_id": req.action_id, "status": "cancelled", "message": "No problem, I didn't file anything."}
-    mock = {k: v for k, v in load_mock("chat_stream")["confirm_response"].items() if not k.startswith("_")}
-    return {**mock, "action_id": req.action_id}
+        store.remember(req.session_id, {"role": "assistant", "content": f"(The student cancelled the {action.tool} draft.)"})
+        return {"action_id": req.action_id, "status": "cancelled", "message": "No problem, I didn't do anything."}
+
+    status, result = await run_confirmed(action, req.edits)
+    message = result.get("message") or ("Done!" if status == "done" else "That didn't work.")
+    store.remember(req.session_id, {"role": "assistant", "content": f"({action.tool} confirmed: {message})"})
+    return {"action_id": req.action_id, "status": status, "message": message, "result": result}
