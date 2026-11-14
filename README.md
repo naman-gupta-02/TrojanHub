@@ -48,14 +48,55 @@ supabase/          Migrations + seed data
 | P3 | Parnavi | Events, Deals & Freebies, notifications, feed |
 | P4 | Jaymin | Platform, Supabase, Complaints, Admin, deployment |
 
-## Getting started
+## Getting started (15 minutes, no keys needed)
 
-1. Copy `.env.example` to `.env` and fill in your keys. **Never commit `.env`.**
-2. **AI service:** see [`services/ai/README.md`](services/ai/README.md). In short:
-   `cd services/ai && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000`
-3. **Mobile and web:** the shells are placeholders for now (see `apps/mobile/README.md` and
-   `apps/web/README.md`).
-4. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full design.
+Everything runs on **mock data** right away. You don't need Supabase, an LLM key, or anyone else's code.
+
+**Needs:** Node **22+** (`nvm use`), Python **3.11**, the Expo Go app on your phone.
+
+```bash
+git clone https://github.com/naman-gupta-02/TrojanHub.git && cd TrojanHub
+npm install                                    # installs mobile + web + shared
+
+# 1) AI service (terminal 1)
+cd services/ai && python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && cp ../../.env.example .env
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000   # http://localhost:8000/docs
+
+# 2) Website (terminal 2, repo root)
+npm run web                                    # http://localhost:3000
+
+# 3) Mobile (terminal 3, repo root)
+npm run mobile                                 # scan the QR with Expo Go (same Wi-Fi)
+```
+
+Every page and tab already calls its endpoint and shows the mock response. Replace the
+placeholder with your real UI, then make the endpoint real.
+
+## Start here: what each person builds first
+
+| Who | Branch | Backend (replace the mock branch) | Mobile | Web | Your mocks |
+|---|---|---|---|---|---|
+| **Naman (P1)** | `p1/chatbot` | `services/ai/app/chat/`, `app/rag/`, `scripts/scrape/` | `app/(tabs)/chat.tsx` | `app/chat/` | `chat_stream.json` |
+| **Vishwa (P2)** | `p2/lost-found` | `services/ai/app/lostfound/routes.py` (+ `clip.py`, `tiers.py`) | `app/(tabs)/lost-found/` | `app/lost-found/` | `items_*.json` |
+| **Parnavi (P3)** | `p3/events` | `services/ai/app/events/routes.py`, `app/notify/` | `app/(tabs)/home.tsx`, `app/(tabs)/events/` | `app/page.tsx`, `events/`, `deals/`, `rewards/` | `flyers_scan`, `events_*`, `deals_search`, `rewards_progress`, `feed` |
+| **Jaymin (P4)** | `p4/platform` | `services/ai/app/complaints/`, `app/admin/`, `app/core/` | `app/(tabs)/report.tsx`, `app/auth/` | `app/report/`, `app/admin/`, `app/login/` | `complaints_*`, `tickets_upvote`, `admin_*` |
+
+What's already shared and ready:
+
+- **API formats:** [`packages/shared/types.ts`](packages/shared/types.ts) defines every request and response.
+  [`packages/shared/api.ts`](packages/shared/api.ts) is the typed client (`api.items.search(...)`).
+- **Fake responses:** [`packages/shared/mocks/`](packages/shared/mocks/), one per endpoint.
+- **Database:** [`supabase/migrations/`](supabase/migrations/) has every table from ARCHITECTURE.md §5, plus RLS,
+  vector search functions, storage buckets, realtime and @usc.edu-only sign-up.
+  [`supabase/seed.sql`](supabase/seed.sql) has buildings and complaint routes.
+
+### Connecting Supabase (once, by Jaymin or whoever has the account)
+
+1. Create a project at supabase.com. In **SQL Editor**, run `supabase/migrations/202611141600_p4_initial_schema.sql`, then `supabase/seed.sql`.
+2. **Auth → Email:** keep email sign-in on. Edit the "Magic Link" email template to include `{{ .Token }}`, because the app signs in with a 6-digit code.
+3. Put the keys in `services/ai/.env` (URL, anon, service role), `apps/web/.env.local` and `apps/mobile/.env` (URL + anon only). See each `.env.example`.
+4. Share the URL and anon key with the team. **Never share the service role key** outside the AI service.
 
 ## Contributing
 

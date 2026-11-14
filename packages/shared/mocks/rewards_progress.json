@@ -1,0 +1,38 @@
+[
+  {
+    "program": {
+      "id": "90000000-0000-0000-0000-000000000001",
+      "name": "[MOCK] Career event series",
+      "office": "Viterbi Career Connections",
+      "reward_desc": "[MOCK] see the official rules page",
+      "required_count": 5,
+      "rules_url": "https://viterbicareers.usc.edu/"
+    },
+    "attended": 3,
+    "required": 5,
+    "next_eligible_events": [
+      {
+        "id": "e0000000-0000-0000-0000-000000000004",
+        "title": "[MOCK] Resume review drop-in",
+        "description": null,
+        "starts_at": "2026-11-17T23:00:00Z",
+        "ends_at": "2026-11-18T01:00:00Z",
+        "building_id": "b0000000-0000-0000-0000-000000000011",
+        "location_text": "Waite Phillips Hall lobby",
+        "category": "career",
+        "is_free": true,
+        "has_freebie": false,
+        "freebie_desc": null,
+        "register_url": "https://example.com/register",
+        "ticket_url": null,
+        "tickets_open_at": null,
+        "org_id": null,
+        "posted_by": "00000000-0000-0000-0000-000000000001",
+        "source": "org",
+        "flyer_url": null,
+        "status": "published",
+        "created_at": "2026-11-14T21:00:00Z"
+      }
+    ]
+  }
+]

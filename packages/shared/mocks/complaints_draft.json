@@ -1,0 +1,17 @@
+{
+  "draft": {
+    "department": "Facilities",
+    "category": "HVAC",
+    "urgency": "medium",
+    "building": "GFS",
+    "building_id": "b0000000-0000-0000-0000-000000000001",
+    "room": "213",
+    "summary": "Room is too hot; AC may not be working",
+    "confidence": 0.93,
+    "reason": "mentions heat + a room -> HVAC -> Facilities"
+  },
+  "duplicate_ticket": {
+    "id": "00000000-0000-0000-0000-0000000000a1",
+    "report_count": 4
+  }
+}

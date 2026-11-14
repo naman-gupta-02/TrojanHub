@@ -1,0 +1,58 @@
+{
+  "results": [
+    {
+      "item": {
+        "id": "c0000000-0000-0000-0000-000000000001",
+        "kind": "found",
+        "tier": "everyday",
+        "title": "Black Hydro Flask with Trojans sticker",
+        "description": "32 oz, a few dents, cardinal Trojans sticker",
+        "photo_url": null,
+        "building_id": "b0000000-0000-0000-0000-000000000002",
+        "location_text": "Leavey Library, 2nd floor",
+        "dropoff_point_id": null,
+        "status": "open",
+        "posted_by": "00000000-0000-0000-0000-000000000002",
+        "expires_at": "2026-11-28T21:00:00Z",
+        "created_at": "2026-11-14T21:00:00Z"
+      },
+      "score": 0.83
+    },
+    {
+      "item": {
+        "id": "c0000000-0000-0000-0000-000000000004",
+        "kind": "found",
+        "tier": "everyday",
+        "title": "Gray USC hoodie",
+        "description": "Size M, left on a chair",
+        "photo_url": null,
+        "building_id": "b0000000-0000-0000-0000-000000000005",
+        "location_text": "SAL 101",
+        "dropoff_point_id": null,
+        "status": "open",
+        "posted_by": "00000000-0000-0000-0000-000000000002",
+        "expires_at": "2026-11-28T21:00:00Z",
+        "created_at": "2026-11-14T21:00:00Z"
+      },
+      "score": 0.41
+    },
+    {
+      "item": {
+        "id": "c0000000-0000-0000-0000-000000000003",
+        "kind": "found",
+        "tier": "everyday",
+        "title": "Blue umbrella",
+        "description": "Compact navy-blue umbrella",
+        "photo_url": null,
+        "building_id": "b0000000-0000-0000-0000-000000000002",
+        "location_text": "Leavey Library entrance",
+        "dropoff_point_id": null,
+        "status": "open",
+        "posted_by": "00000000-0000-0000-0000-000000000002",
+        "expires_at": "2026-11-28T21:00:00Z",
+        "created_at": "2026-11-14T21:00:00Z"
+      },
+      "score": 0.22
+    }
+  ]
+}

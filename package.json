@@ -10,9 +10,13 @@
   "scripts": {
     "mobile": "npm --workspace apps/mobile run start",
     "web": "npm --workspace apps/web run dev",
-    "ai": "cd services/ai && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    "ai": "cd services/ai && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "typescript": "^5"
   }
 }
