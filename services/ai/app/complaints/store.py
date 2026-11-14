@@ -48,7 +48,7 @@ def similar_open_tickets(embedding: list[float], building_id: str, limit: int = 
 
 def recent_open_tickets(building_id: str, category: str) -> list[dict]:
     """Open tickets with this building and category from the last 7 days, newest first."""
-    since = (datetime.now(timezone.utc) - timedelta(days=DEDUPE_WINDOW_DAYS)).isoformat()
+    since = (datetime.now(timezone.utc) - timedelta(days=DEDUPE_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return (
         get_supabase().table("tickets").select(TICKET_COLS)
         .eq("building_id", building_id).eq("category", category).neq("status", "resolved")

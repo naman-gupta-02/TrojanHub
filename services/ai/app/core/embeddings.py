@@ -19,6 +19,18 @@ _model = None
 _failed = False  # don't retry a broken load on every request
 
 
+def _load():
+    try:
+        # P1's RAG loader (app/rag/embeddings.py) uses the same EMBED_MODEL. When it is present,
+        # reuse its copy so the process holds one model in memory, not two.
+        from app.rag.embeddings import _model as rag_model
+    except ImportError:
+        from sentence_transformers import SentenceTransformer  # heavy, so imported lazily
+
+        return SentenceTransformer(settings.embed_model, device="cpu")
+    return rag_model()
+
+
 def _get_model():
     global _model, _failed
     if _model is not None or _failed:
@@ -26,9 +38,7 @@ def _get_model():
     with _lock:
         if _model is None and not _failed:
             try:
-                from sentence_transformers import SentenceTransformer  # heavy, so imported lazily
-
-                _model = SentenceTransformer(settings.embed_model)
+                _model = _load()
             except Exception as e:  # noqa: BLE001 - any failure means "no embeddings"
                 _failed = True
                 log.warning("Embedding model %s unavailable: %s", settings.embed_model, e)

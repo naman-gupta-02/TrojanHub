@@ -12,6 +12,7 @@ import logging
 import re
 import time
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -61,23 +62,37 @@ async def _run(fn, *args):
 
 
 # ---------------------------------------------------------------------------
-# Sorting a report. The result is kept for 10 minutes so that "confirm" files exactly the
-# draft the student just saw, without a second LLM call that could answer differently.
+# Sorting a report. The result is kept for 10 minutes, keyed on the student's words, so that
+# "confirm" files exactly the draft the student just saw, without a second LLM call that could
+# answer differently. (Tommy sends building_id only on confirm, so the key can't include it.)
 # ---------------------------------------------------------------------------
 _SORTED_TTL_S = 600
 _SORTED_MAX = 500
-_sorted: dict[tuple, tuple[float, Classification, dict | None, list[float] | None]] = {}
+_sorted: dict[str, tuple[float, Classification, list[float] | None]] = {}
+
+
+def _classify_cached(text: str, buildings: list[dict]) -> tuple[Classification, list[float] | None]:
+    hit = _sorted.get(text)
+    if hit and time.monotonic() - hit[0] < _SORTED_TTL_S:
+        return hit[1], hit[2]
+
+    result = classify(text, buildings)
+    # Safety reports never become tickets, so they need no embedding.
+    embedding = None if result.is_safety else embed_text(result.summary)
+
+    # Keyword-rule answers are a fallback for an LLM hiccup: don't pin them for 10 minutes.
+    if result.engine == "llm" or not settings.llm_model:
+        if len(_sorted) >= _SORTED_MAX:
+            _sorted.clear()
+        _sorted[text] = (time.monotonic(), result, embedding)
+    return result, embedding
 
 
 def _sort_report(req: ComplaintRequest) -> tuple[Classification, dict | None, list[float] | None]:
     """(classification, building row or None, summary embedding or None)."""
-    key = (req.text, req.building_id, req.room)
-    hit = _sorted.get(key)
-    if hit and time.monotonic() - hit[0] < _SORTED_TTL_S:
-        return hit[1], hit[2], hit[3]
-
     buildings = store.list_buildings()
-    result = classify(req.text, buildings)
+    cached, embedding = _classify_cached(req.text, buildings)
+    result = replace(cached)  # copy: the request's own fields must not leak into the cache
 
     # What the student picked in the form wins over what the AI read from the text.
     if req.building_id:
@@ -89,13 +104,6 @@ def _sort_report(req: ComplaintRequest) -> tuple[Classification, dict | None, li
         building = next((b for b in buildings if b["code"] == result.building_code), None)
     if req.room and req.room.strip():
         result.room = req.room.strip().upper()[:20]
-
-    # Safety reports never become tickets, so they need no embedding.
-    embedding = None if result.is_safety else embed_text(result.summary)
-
-    if len(_sorted) >= _SORTED_MAX:
-        _sorted.clear()
-    _sorted[key] = (time.monotonic(), result, building, embedding)
     return result, building, embedding
 
 

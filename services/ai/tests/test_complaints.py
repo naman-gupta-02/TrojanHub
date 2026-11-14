@@ -5,7 +5,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from conftest import ALICE, BOB, BUILDINGS, GFS, LVL, post
+from tests.conftest import ALICE, BOB, BUILDINGS, GFS, LVL, post
 
 from app.complaints import classify as classify_mod
 from app.complaints import store
@@ -205,3 +205,30 @@ def test_mock_mode_still_serves_the_mocks(client, monkeypatch):
     assert post(client, "it's so hot in GFS 213").json()["draft"]["department"] == "Facilities"
     assert "safety" in post(client, "smell of gas").json()
     assert client.post("/api/tickets/x/upvote").json() == {"report_count": 6}
+
+
+def test_confirm_files_the_same_draft_tommy_showed(client, fake, monkeypatch):
+    """Tommy drafts with text only, then confirms with building_id + room: the LLM must run once."""
+    calls = []
+    answer = json.dumps({"department": "Facilities", "category": "HVAC", "urgency": "medium", "building_code": "GFS", "room": "213",
+                         "summary": "Air conditioning not working, room too hot", "is_safety": False, "confidence": 0.93, "reason": "heat -> HVAC -> Facilities"})
+    _fake_llm(monkeypatch, answer)
+    real_classify = classify_mod.classify
+    monkeypatch.setattr("app.complaints.routes.classify", lambda text, buildings: calls.append(text) or real_classify(text, buildings))
+
+    draft = post(client, "it's so hot in GFS 213", source="chat").json()["draft"]
+    ticket = post(client, "it's so hot in GFS 213", building_id=draft["building_id"], room=draft["room"], confirm=True, source="chat").json()["ticket"]
+    assert len(calls) == 1 and ticket["summary"] == draft["summary"] and ticket["room"] == "213"
+
+    # another student's form fields must not leak into the cached answer
+    other = post(client, "it's so hot in GFS 213", building_id=LVL, room="b12").json()["draft"]
+    again = post(client, "it's so hot in GFS 213").json()["draft"]
+    assert (other["building"], other["room"]) == ("LVL", "B12") and (again["building"], again["room"]) == ("GFS", "213")
+
+
+def test_rule_fallback_is_not_cached_when_an_llm_is_configured(client, fake, monkeypatch):
+    _fake_llm(monkeypatch, "not json")  # LLM hiccup -> keyword rules
+    assert "keyword rules" in post(client, "wifi keeps dropping in Leavey").json()["draft"]["reason"]
+    _fake_llm(monkeypatch, json.dumps({"department": "ITS", "category": "Wi-Fi", "urgency": "low", "building_code": "LVL",
+                                       "summary": "Wi-Fi keeps dropping", "is_safety": False, "confidence": 0.9, "reason": "Wi-Fi -> ITS"}))
+    assert post(client, "wifi keeps dropping in Leavey").json()["draft"]["reason"] == "Wi-Fi -> ITS"

@@ -2,7 +2,7 @@
 
 import uuid
 
-from conftest import BOB, post
+from tests.conftest import BOB, post
 
 from app.core.config import settings
 
@@ -34,7 +34,9 @@ def test_filters(client, fake):
     assert len(get(department="Facilities")) == 3 and len(get(department="ITS")) == 1
     assert len(get(building="GFS")) == 3 and len(get(building="LVL")) == 1
     assert len(get(urgency="high")) == 1 and len(get(department="ITS", building="GFS")) == 0
-    assert len(get(**{"from": "2030-01-01T00:00:00+00:00"})) == 0
+    assert len(get(**{"from": "2030-01-01T00:00:00+00:00"})) == 0 and len(get(**{"from": "2026-11-14"})) == 4
+    assert client.get("/api/admin/complaints?from=2030-01-01T00:00:00+00:00").json() == []  # "+" not encoded
+    assert client.get("/api/admin/complaints", params={"from": "yesterday"}).json()["error"]["code"] == "bad_date"
 
 
 def test_correcting_a_department_reroutes_the_whole_ticket(client, fake):

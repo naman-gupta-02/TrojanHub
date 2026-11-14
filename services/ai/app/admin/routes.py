@@ -96,8 +96,21 @@ def _to_row(c: dict) -> dict:
     }
 
 
+def _since(value: str | None) -> str | None:
+    """?from= as a UTC "Z" timestamp. A "+" offset that arrived unencoded shows up as a space."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace(" ", "+").replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(422, detail={"code": "bad_date", "message": "from must be an ISO date, e.g. 2026-11-14"}) from None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _rows(since: str | None = None) -> list[dict]:
-    return [_to_row(c) for c in store.admin_complaints(since=since)]
+    return [_to_row(c) for c in store.admin_complaints(since=_since(since))]
 
 
 def _one(complaint_id: str) -> dict:
