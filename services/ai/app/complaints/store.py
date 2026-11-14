@@ -105,3 +105,32 @@ def complaints_for(reporter_id: str) -> list[dict]:
 # --- routes ----------------------------------------------------------------
 def routes_for(department: str) -> list[dict]:
     return get_supabase().table("routes").select("department,category,form_url,email").eq("department", department).execute().data or []
+
+
+# --- admin dashboard -------------------------------------------------------
+ADMIN_MAX_ROWS = 2000
+
+
+def admin_complaints(since: str | None = None, complaint_id: str | None = None) -> list[dict]:
+    """Complaints, newest first, each with its ticket ("ticket") and building code ("building")."""
+    query = get_supabase().table("complaints").select(
+        "*, ticket:tickets(status,urgency,report_count), building:buildings(code)"
+    )
+    if complaint_id:
+        query = query.eq("id", complaint_id)
+    if since:
+        query = query.gte("created_at", since)
+    return query.order("created_at", desc=True).limit(ADMIN_MAX_ROWS).execute().data or []
+
+
+def update_complaint(complaint_id: str, fields: dict) -> None:
+    get_supabase().table("complaints").update(fields).eq("id", complaint_id).execute()
+
+
+def update_ticket_complaints(ticket_id: str, fields: dict) -> None:
+    """Update every complaint grouped under one ticket."""
+    get_supabase().table("complaints").update(fields).eq("ticket_id", ticket_id).execute()
+
+
+def update_ticket(ticket_id: str, fields: dict) -> None:
+    get_supabase().table("tickets").update(fields).eq("id", ticket_id).execute()
