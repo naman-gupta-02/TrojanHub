@@ -1,0 +1,75 @@
+# Hand-picked public USC pages for Tommy's RAG index (ARCHITECTURE.md §7.1).
+# Every URL here returned HTTP 200 when checked on 2026-11-14.
+# Topics are used for filtering and debugging. Add pages through a PR to p1/chatbot.
+
+pages:
+  # --- Basic needs / food pantry (demo question) ---
+  - {url: "https://studentbasicneeds.usc.edu/", topic: basic_needs}
+  - {url: "https://studentbasicneeds.usc.edu/programs-and-services/food-support/", topic: basic_needs}
+  - {url: "https://studentbasicneeds.usc.edu/programs-and-services/food-support/trojan-food-pantry/", topic: basic_needs}
+  - {url: "https://studentbasicneeds.usc.edu/contact/", topic: basic_needs}
+  - {url: "https://campussupport.usc.edu/", topic: basic_needs}
+  - {url: "https://campussupport.usc.edu/students/basic-needs-2/", topic: basic_needs}
+  - {url: "https://campussupport.usc.edu/students/emergency-loan-application/", topic: basic_needs}
+
+  # --- Safety / DPS / lost & found ---
+  - {url: "https://dps.usc.edu/", topic: safety}
+  - {url: "https://dps.usc.edu/contact/", topic: safety}
+  - {url: "https://dps.usc.edu/contact/report/", topic: safety}
+  - {url: "https://dps.usc.edu/services/lost-and-found/", topic: lost_found}
+  - {url: "https://dps.usc.edu/services/shuttles/", topic: transportation}
+  - {url: "https://dps.usc.edu/services/safety-app/", topic: safety}
+  - {url: "https://www.usc.edu/emergency/", topic: safety}
+
+  # --- Facilities / maintenance (complaints routing) ---
+  - {url: "https://fpm.usc.edu/", topic: facilities}
+  - {url: "https://fpm.usc.edu/customer-guide-to-services/", topic: facilities}
+  - {url: "https://fpm.usc.edu/facilities-management-services/", topic: facilities}
+
+  # --- Housing ---
+  - {url: "https://housing.usc.edu/", topic: housing}
+  - {url: "https://housing.usc.edu/index.php/section/after-move-in/", topic: housing}
+  - {url: "https://housing.usc.edu/index.php/section/additional-services/", topic: housing}
+  - {url: "https://housing.usc.edu/index.php/residential-meal-plans/", topic: housing}
+
+  # --- Dining ---
+  - {url: "https://hospitality.usc.edu/", topic: dining}
+  - {url: "https://hospitality.usc.edu/hours-of-operation/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-hall-menus/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-locations/usc-village-dining-hall/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-locations/everybodys-kitchen/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-locations/parkside-restaurant-grill/", topic: dining}
+
+  # --- IT ---
+  - {url: "https://itservices.usc.edu/", topic: it}
+  - {url: "https://itservices.usc.edu/about/contact/", topic: it}
+
+  # --- Libraries ---
+  - {url: "https://libraries.usc.edu/", topic: libraries}
+  - {url: "https://libraries.usc.edu/hours", topic: libraries}
+
+  # --- Health ---
+  - {url: "https://studenthealth.usc.edu/", topic: health}
+  - {url: "https://studenthealth.usc.edu/hours/", topic: health}
+  - {url: "https://studenthealth.usc.edu/emergencies/", topic: health}
+  - {url: "https://sites.usc.edu/counselingandmentalhealth/", topic: health}
+
+  # --- Careers ---
+  - {url: "https://careers.usc.edu/", topic: careers}
+  - {url: "https://viterbicareers.usc.edu/", topic: careers}
+
+  # --- Transportation / parking ---
+  - {url: "https://transnet.usc.edu/", topic: transportation}
+  - {url: "https://transnet.usc.edu/index.php/contact-us/", topic: transportation}
+  - {url: "https://transnet.usc.edu/index.php/parking-rates/", topic: transportation}
+  - {url: "https://transnet.usc.edu/index.php/report-a-maintenance-issue/", topic: transportation}
+
+  # --- Student life / other offices ---
+  - {url: "https://studentlife.usc.edu/", topic: student_life}
+  - {url: "https://usg.usc.edu/", topic: student_life}
+  - {url: "https://recsports.usc.edu/", topic: student_life}
+  - {url: "https://financialaid.usc.edu/", topic: academics}
+  - {url: "https://ois.usc.edu/", topic: academics}
+  - {url: "https://osas.usc.edu/", topic: academics}
+  - {url: "https://kortschakcenter.usc.edu/", topic: academics}
+  - {url: "https://sustainability.usc.edu/", topic: student_life}
