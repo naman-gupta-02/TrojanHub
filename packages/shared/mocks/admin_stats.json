@@ -1,0 +1,41 @@
+{
+  "total": 25,
+  "forwarded_pct": 84.0,
+  "routing_accuracy_pct": 92.0,
+  "by_department": [
+    {
+      "department": "Facilities",
+      "count": 14
+    },
+    {
+      "department": "Housing",
+      "count": 5
+    },
+    {
+      "department": "ITS",
+      "count": 4
+    },
+    {
+      "department": "Transportation",
+      "count": 2
+    }
+  ],
+  "by_building": [
+    {
+      "building": "GFS",
+      "count": 7
+    },
+    {
+      "building": "VIL",
+      "count": 6
+    },
+    {
+      "building": "LVL",
+      "count": 4
+    },
+    {
+      "building": "SAL",
+      "count": 3
+    }
+  ]
+}
