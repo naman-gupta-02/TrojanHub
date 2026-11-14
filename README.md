@@ -50,10 +50,12 @@ supabase/          Migrations + seed data
 
 ## Getting started
 
-> Setup steps will be added once the app shells are in (Phase 0).
-
 1. Copy `.env.example` to `.env` and fill in your keys. **Never commit `.env`.**
-2. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how to run each part.
+2. **AI service:** see [`services/ai/README.md`](services/ai/README.md). In short:
+   `cd services/ai && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000`
+3. **Mobile and web:** the shells are placeholders for now (see `apps/mobile/README.md` and
+   `apps/web/README.md`).
+4. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full design.
 
 ## Contributing
 
