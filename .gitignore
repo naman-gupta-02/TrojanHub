@@ -20,6 +20,9 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# Generated data (scraped pages are re-created by the crawler; chunks live in Supabase)
+services/ai/scripts/scrape/out/
+
 # OS / editor
 .DS_Store
 .vscode/

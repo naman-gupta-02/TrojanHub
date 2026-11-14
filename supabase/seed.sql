@@ -1,0 +1,2 @@
+-- Demo seed data. Owned by Jaymin (P4); everyone adds rows through a PR.
+-- Migrations live in supabase/migrations/ and are named YYYYMMDDHHMM_<owner>_<what>.sql.
