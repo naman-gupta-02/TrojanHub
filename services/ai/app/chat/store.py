@@ -28,6 +28,29 @@ class PendingAction:
 
 
 _history: dict[str, list[dict]] = {}
+_photos: dict[str, list[str]] = {}
+
+
+def save_photo(session_id: str, url: str) -> str:
+    """Inline photos (data: URLs) are huge, so the LLM only sees a short reference like photo://1."""
+    if not url.startswith("data:"):
+        return url
+    photos = _photos.setdefault(session_id, [])
+    photos.append(url)
+    del photos[:-5]  # keep the last few per session
+    return f"photo://{len(photos)}"
+
+
+def resolve_photo(session_id: str, ref: str | None) -> str | None:
+    if not ref or not ref.startswith("photo://"):
+        return ref
+    photos = _photos.get(session_id, [])
+    try:
+        return photos[int(ref.removeprefix("photo://")) - 1]
+    except (ValueError, IndexError):
+        return None
+
+
 _pending: dict[str, PendingAction] = {}
 
 

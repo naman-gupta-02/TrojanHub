@@ -208,3 +208,25 @@ def test_history_is_kept_per_session(client, llm):
     chat(client, "what did I say?", session="h1")
     second = fake.calls[1]["messages"]
     assert any(m["role"] == "user" and "Tommy's friend" in (m["content"] or "") for m in second)
+
+
+def test_inline_photo_is_hidden_from_llm_and_posted(client, llm):
+    import base64
+
+    photo = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8fake-jpeg" * 500).decode()
+    fake = llm(tool_step("report_found_item", description="water bottle", location="Leavey", image_url="photo://1"),
+               text_step("Tap Confirm to post it."))
+    events = chat(client, "found this at Leavey", session="p1", image_url=photo)
+    user_msg = fake.calls[0]["messages"][-1]["content"]
+    assert "photo://1" in user_msg and "base64" not in user_msg  # the LLM never sees the huge data URL
+    card = next(e for e in events if e["type"] == "confirm")
+    assert card["summary"].endswith("with photo")
+    body = client.post("/api/chat/confirm", json={"session_id": "p1", "action_id": card["action_id"], "approved": True}).json()
+    assert body["status"] == "done"
+
+
+def test_flyer_photo_goes_to_flyer_scan(client, llm):
+    llm(tool_step("scan_flyer", image_url="photo://1"), text_step("Here's what I read. Tap Confirm."))
+    events = chat(client, "add this event", session="fl1", image_url="data:image/png;base64,iVBORw0KGgo=")
+    card = next(e for e in events if e["type"] == "confirm")
+    assert card["tool"] == "scan_flyer" and "Diwali" in card["summary"]

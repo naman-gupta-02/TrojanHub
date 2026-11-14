@@ -37,7 +37,15 @@ async def call(
 
 
 async def download(url: str) -> tuple[bytes, str] | None:
-    """Fetch a photo the student uploaded (Supabase Storage URL) to forward as multipart."""
+    """Fetch a photo the student uploaded (Storage URL or inline data: URL) to forward as multipart."""
+    if url.startswith("data:"):
+        import base64
+
+        header, _, data = url.partition(",")
+        try:
+            return base64.b64decode(data), header.removeprefix("data:").split(";")[0] or "image/jpeg"
+        except ValueError:
+            return None
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             r = await client.get(url)

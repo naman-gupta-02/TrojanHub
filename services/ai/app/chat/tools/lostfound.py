@@ -25,8 +25,9 @@ async def search_lost_items(args: dict, ctx: ToolContext) -> ToolOutcome:
 
 async def report_found_item(args: dict, ctx: ToolContext) -> ToolOutcome:
     draft = {"description": args["description"], "location": args["location"], "image_url": args.get("image_url")}
+    real_image = store.resolve_photo(ctx.session_id, args.get("image_url"))
     action = store.add_pending(session_id=ctx.session_id, user_id=ctx.user_id, tool="report_found_item",
-                               args=args, draft=draft, auth_header=ctx.auth_header)
+                               args={**args, "_image": real_image}, draft=draft, auth_header=ctx.auth_header)
     summary = f"Found item · {args['description']} · {args['location']}" + (" · with photo" if args.get("image_url") else "")
     return ToolOutcome(
         {"status": "awaiting_confirmation", "action_id": action.action_id, "draft": draft},
@@ -37,7 +38,8 @@ async def report_found_item(args: dict, ctx: ToolContext) -> ToolOutcome:
 
 async def confirm_report_found_item(action: store.PendingAction, draft: dict) -> tuple[str, dict]:
     files = None
-    if draft.get("image_url") and (photo := await download(draft["image_url"])):
+    image = action.args.get("_image") or draft.get("image_url")
+    if image and (photo := await download(image)):
         files = {"photo": ("photo.jpg", photo[0], photo[1])}
     res = await call("POST", "/items", action.auth_header, data={
         "kind": "found", "description": draft["description"], "location_text": draft["location"],

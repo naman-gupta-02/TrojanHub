@@ -79,7 +79,8 @@ async def run_turn(
     session_id: str, message: str, user_id: str, auth_header: str | None, image_url: str | None = None
 ) -> AsyncIterator[dict]:
     ctx = ToolContext(session_id=session_id, user_id=user_id, auth_header=auth_header)
-    user_text = message + (f"\n[photo: {image_url}]" if image_url else "")
+    photo_ref = store.save_photo(session_id, image_url) if image_url else None
+    user_text = message + (f"\n[photo: {photo_ref}]" if photo_ref else "")
     messages: list[dict] = [
         {"role": "system", "content": system_prompt(_today())},
         *store.history(session_id),

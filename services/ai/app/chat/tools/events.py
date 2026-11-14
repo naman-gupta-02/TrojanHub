@@ -66,7 +66,10 @@ async def search_deals(args: dict, ctx: ToolContext) -> ToolOutcome:
 
 
 async def scan_flyer(args: dict, ctx: ToolContext) -> ToolOutcome:
-    res = await call("POST", "/flyers/scan", ctx.auth_header, json={"image_url": args["image_url"]})
+    real_image = store.resolve_photo(ctx.session_id, args["image_url"])
+    if not real_image:
+        return ToolOutcome({"error": {"code": "photo_missing", "message": "I lost that photo. Ask the student to attach it again."}})
+    res = await call("POST", "/flyers/scan", ctx.auth_header, json={"image_url": real_image})
     if "error" in res:
         return ToolOutcome(res)
     draft = {**res["fields"], "type": res["type"], "missing": res.get("missing", []), "flyer_url": args["image_url"]}
