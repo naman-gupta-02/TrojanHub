@@ -1,0 +1,46 @@
+"""P3 settings + "is it live?" switches. Same .env files as app/core/config.py.
+
+The global USE_MOCKS stays true until every feature is real, so P3 decides on its own:
+- Database: real Supabase whenever the URL + service role key are set (P3_USE_MOCKS=true forces mocks).
+- Flyer scan: real LLM whenever a model + key/base URL are set, otherwise the mock.
+"""
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.config import REPO_ROOT, SERVICE_DIR, settings
+
+
+class P3Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=(REPO_ROOT / ".env", SERVICE_DIR / ".env"), extra="ignore")
+
+    p3_use_mocks: bool = False
+    # Used in emails and .ics files, so links work outside the app
+    public_api_url: str = "http://localhost:8000"
+    public_web_url: str = "http://localhost:3000"
+    # Resend's shared sender works without a verified domain (delivers to the account owner only)
+    digest_from: str = "TrojanHub <onboarding@resend.dev>"
+
+
+@lru_cache
+def get_p3_settings() -> P3Settings:
+    return P3Settings()
+
+
+p3 = get_p3_settings()
+
+
+def db_live() -> bool:
+    return bool(settings.supabase_url and settings.supabase_service_role_key) and not p3.p3_use_mocks
+
+
+def llm_live() -> bool:
+    has_model = bool(settings.llm_vision_model or settings.llm_model)
+    has_endpoint = bool(settings.llm_api_key or settings.llm_base_url or settings.llm_vision_base_url)
+    return has_model and has_endpoint
+
+
+def signing_secret() -> bytes:
+    """For check-in codes and unsubscribe links. Never sent to clients."""
+    return (settings.cron_secret or settings.supabase_service_role_key or "trojanhub-dev").encode()
