@@ -35,6 +35,8 @@ export function WhereNowChoice({ tier, onChange, busy }: { tier: ItemTier; onCha
             disabled={busy}
             accessibilityRole="radio"
             accessibilityState={{ checked: selected, disabled: !!busy }}
+            aria-checked={selected} // the aria-* props also reach screen readers on web (accessibilityState doesn't)
+            aria-disabled={!!busy}
             style={[s.card, { borderWidth: 2, borderColor: selected ? colors.cardinal : colors.line, flexDirection: 'row', alignItems: 'flex-start' }]}>
             <View style={[s.radio, selected && { borderColor: colors.cardinal }]}>{selected ? <View style={s.radioDot} /> : null}</View>
             <View style={{ flex: 1, gap: 2 }}>
@@ -120,6 +122,8 @@ export function Button({ label, onPress, kind = 'primary', busy, disabled }: { l
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: !!(busy || disabled), busy: !!busy }}
+      aria-disabled={!!(busy || disabled)}
+      aria-busy={!!busy}
       style={({ pressed }) => [s.button, primary ? s.primary : s.secondary, (pressed || busy || disabled) && { opacity: 0.7 }]}>
       {busy ? <ActivityIndicator color={primary ? '#fff' : colors.cardinal} /> : <Text style={[s.buttonText, { color: primary ? '#fff' : colors.ink }]}>{label}</Text>}
     </Pressable>

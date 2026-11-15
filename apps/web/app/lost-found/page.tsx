@@ -38,7 +38,8 @@ export default function LostFoundPage() {
         setSignedIn(!!uid);
         if (!uid) return;
       }
-      getBuildings().then(setBuildings);
+      // Building names first: items at DPS show only their building, so the list needs them
+      setBuildings(await getBuildings());
       showRecent();
     })();
   }, []);

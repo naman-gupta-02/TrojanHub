@@ -1,6 +1,7 @@
 // P2 Vishwa: small shared pieces for the Lost & Found pages.
 import type { Building, DropoffInfo, Item, ItemTier } from "@trojanhub/shared";
 import Link from "next/link";
+import { useId } from "react";
 
 import { matchLabel, placeMapLink, timeAgo, whereFound } from "../_lib/data";
 
@@ -64,6 +65,7 @@ export function ItemCard({ item, buildings, score }: { item: Item; buildings: Re
 
 /** The finder's choice: taken to DPS, or left where found. The AI's suggestion is pre-selected. */
 export function WhereNowChoice({ tier, onChange, busy }: { tier: ItemTier; onChange: (t: ItemTier) => void; busy?: boolean }) {
+  const group = useId(); // radios sharing a name are linked across the page, so each group gets its own
   const options: { value: ItemTier; title: string; hint: string }[] = [
     { value: "valuable", title: "I'm taking it to DPS Lost & Found", hint: "Best for phones, wallets, IDs, keys, AirPods. DPS checks who really owns it." },
     { value: "everyday", title: "I left it where I found it", hint: "Owners will see the place you wrote and go there." },
@@ -76,7 +78,7 @@ export function WhereNowChoice({ tier, onChange, busy }: { tier: ItemTier; onCha
           key={o.value}
           className={`flex min-h-11 cursor-pointer gap-3 rounded-lg border-2 bg-surface p-3 ${tier === o.value ? "border-cardinal" : "border-line"}`}
         >
-          <input type="radio" name="where-now" value={o.value} checked={tier === o.value} onChange={() => onChange(o.value)} className="mt-1 accent-cardinal" />
+          <input type="radio" name={group} value={o.value} checked={tier === o.value} onChange={() => onChange(o.value)} className="mt-1 accent-cardinal" />
           <span>
             <span className="block font-semibold">{o.title}</span>
             <span className="block text-sm text-muted">{o.hint}</span>
