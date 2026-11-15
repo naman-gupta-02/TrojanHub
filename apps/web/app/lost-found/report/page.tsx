@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 
+import { EditItem } from "../_components/EditItem";
 import { BackLink, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice } from "../_components/parts";
 import { DPS_DROPOFF, currentUserId, getBuildings, isMock, setTier, shrinkPhoto } from "../_lib/data";
 
@@ -153,6 +154,7 @@ export default function ReportFoundPage() {
 function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiven: boolean }) {
   const [item, setItem] = useState<Item>(initial.item);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [buildings, setBuildings] = useState<Record<string, Building>>({});
 
@@ -189,8 +191,24 @@ function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiv
           <p className="text-lg font-semibold">{item.title}</p>
           {item.description && <p className="text-sm text-muted">{item.description}</p>}
           <p className="text-sm text-muted">{item.location_text}</p>
+          {!editing && (
+            <button onClick={() => setEditing(true)} className="min-h-11 text-sm font-semibold text-cardinal hover:underline">
+              Edit details
+            </button>
+          )}
         </div>
       </div>
+
+      {editing && (
+        <EditItem
+          item={item}
+          onSaved={(saved) => {
+            setItem(saved);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
 
       {photoGiven && !item.photo_url && (
         <p className="rounded-md bg-gold/25 p-3 text-sm">We didn&apos;t save your photo: ID and bank cards show private info. The item is still posted.</p>

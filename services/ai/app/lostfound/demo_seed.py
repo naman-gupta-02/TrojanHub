@@ -56,9 +56,10 @@ def _user_id(email: str) -> str:
 
 def _clear(user_id: str) -> int:
     sb = get_supabase()
-    rows = sb.table("items").select("id").eq("posted_by", user_id).execute().data or []
+    rows = sb.table("items").select("id,photo_url").eq("posted_by", user_id).execute().data or []
     if rows:
-        sb.storage.from_(items.BUCKET).remove([f"items/{r['id']}.jpg" for r in rows])
+        paths = {f"items/{r['id']}.jpg" for r in rows} | {p for r in rows if (p := items.photo_path(r["photo_url"]))}
+        sb.storage.from_(items.BUCKET).remove(sorted(paths))
         sb.table("items").delete().eq("posted_by", user_id).execute()
     return len(rows)
 

@@ -100,12 +100,19 @@ def _to_jpeg(img) -> bytes:
     return buf.getvalue()
 
 
-def _upload_photo(item_id: str, jpeg: bytes) -> tuple[str, str]:
-    """Returns (storage path, public URL)."""
-    path = f"items/{item_id}.jpg"
+def _upload_photo(item_id: str, jpeg: bytes, version: str | None = None) -> tuple[str, str]:
+    """Returns (storage path, public URL). A changed photo gets a new name (`version`) so browsers
+    don't keep showing the old one from their cache."""
+    path = f"items/{item_id}{f'-{version}' if version else ''}.jpg"
     bucket = get_supabase().storage.from_(BUCKET)
     bucket.upload(path, jpeg, {"content-type": "image/jpeg"})
     return path, bucket.get_public_url(path).rstrip("?")
+
+
+def photo_path(photo_url: str | None) -> str | None:
+    """Public URL -> path inside the photos bucket ("items/<id>.jpg"), for deleting it."""
+    marker = f"/object/public/{BUCKET}/"
+    return photo_url.split(marker, 1)[1].split("?", 1)[0] if photo_url and marker in photo_url else None
 
 
 def _vector_literal(vec: np.ndarray) -> str:
@@ -215,3 +222,88 @@ def create_item(
     if dropoff:
         response["dropoff"] = dropoff
     return response
+
+
+# ---------------------------------------------------------------------------
+# PATCH /items/{id}: the finder edits their post
+# ---------------------------------------------------------------------------
+def update_item(
+    *,
+    item_id: str,
+    user_id: str,
+    description: str | None = None,
+    location_text: str | None = None,
+    photo: bytes | None = None,
+    remove_photo: bool = False,
+) -> dict:
+    """Change the description, the place and/or the photo of your own post, and refresh what search
+    uses (description fingerprint, building, photo fingerprint, AI title). Fields left as None
+    don't change. Where the item is now (DPS or left where found) is changed separately."""
+    try:
+        uuid.UUID(item_id)
+    except ValueError:
+        raise ItemError(404, "not_found", "That item doesn't exist.") from None
+    sb = get_supabase()
+    rows = sb.table("items").select("*").eq("id", item_id).limit(1).execute().data
+    if not rows:
+        raise ItemError(404, "not_found", "That item doesn't exist.")
+    row = rows[0]
+    if row["posted_by"] != user_id:
+        raise ItemError(403, "not_yours", "Only the person who posted this item can edit it.")
+    if row["status"] != "open":
+        raise ItemError(409, "not_open", "This post was taken down, so it can't be edited.")
+    if photo and len(photo) > MAX_UPLOAD_BYTES:
+        raise ItemError(413, "photo_too_large", "That photo is over 10 MB. Try a smaller one.")
+
+    patch: dict = {}
+    new_description = row["description"]
+    if description is not None:
+        new_description = description.strip() or None
+        patch["description"] = new_description
+    if location_text is not None:
+        where = location_text.strip()
+        if not where:
+            raise ItemError(422, "missing_location", "Say where you found it, e.g. Leavey Library, 2nd floor.")
+        patch["location_text"] = where
+        patch["building_id"] = match_building(where)
+
+    old_photo = photo_path(row.get("photo_url"))
+    new_photo_path = None
+    title = row["title"]
+    if photo:
+        try:
+            img = clip.open_image(photo)
+        except ValueError as e:
+            raise ItemError(400, "bad_photo", str(e)) from e
+        img_vec = clip.embed_pil(img)
+        title = tiers.classify_vector(img_vec).title  # a new photo may show what it really is
+        patch["title"] = title
+        patch["img_embedding"] = _vector_literal(img_vec)
+        if title in NEVER_STORE_PHOTO:
+            patch["photo_url"] = None
+        else:
+            new_photo_path, patch["photo_url"] = _upload_photo(item_id, _to_jpeg(img), version=uuid.uuid4().hex[:8])
+    elif remove_photo:
+        if not new_description:
+            raise ItemError(422, "missing_input", "Add a short description before removing the photo.")
+        patch["photo_url"] = None
+        patch["img_embedding"] = None
+
+    if not patch:
+        return {"item": item_for(row, user_id)}
+    if "description" in patch or "title" in patch:
+        patch["text_embedding"] = _vector_literal(clip.embed_text(f"a photo of {new_description or title}"))
+
+    try:
+        saved = sb.table("items").update(patch).eq("id", item_id).execute().data[0]
+    except Exception:
+        if new_photo_path:
+            sb.storage.from_(BUCKET).remove([new_photo_path])
+        raise
+    if old_photo and (photo or remove_photo) and old_photo != new_photo_path:
+        try:
+            sb.storage.from_(BUCKET).remove([old_photo])
+        except Exception:  # noqa: BLE001 - an orphaned old photo is harmless
+            log.warning("Could not remove old photo %s", old_photo)
+    log.info("Item %s edited: %s", item_id, ", ".join(k for k in patch if not k.endswith("embedding")))
+    return {"item": item_for(saved, user_id)}

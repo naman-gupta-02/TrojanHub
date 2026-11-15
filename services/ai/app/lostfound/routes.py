@@ -4,6 +4,7 @@ POST /items                    multipart {photo, kind, description?, building_id
 GET  /items/search             ?q=&building_id=
 POST /items/search-by-image    multipart {photo}
 POST /items/{id}/claim
+PATCH /items/{id}                multipart {description?, location_text?, photo?, remove_photo?} (finder only)
 
 While settings.mock("lostfound") is true (USE_MOCKS=true and "lostfound" not in REAL_FEATURES),
 these serve packages/shared/mocks/items_*.json. Otherwise the real logic runs: items.py (post),
@@ -13,7 +14,7 @@ search.py (search), claim.py (claim). Response shapes follow types.ts.
 import re
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import get_user_id
@@ -74,6 +75,46 @@ async def search_items_by_image(photo: UploadFile = File(...), user_id: str = De
     photo_bytes = await photo.read()
     try:
         return await run_in_threadpool(search.search_photo, photo_bytes, user_id)
+    except items.ItemError as e:
+        raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
+
+
+@router.patch("/items/{item_id}")
+async def edit_item(
+    request: Request,
+    item_id: str,
+    description: str | None = Form(None),
+    location_text: str | None = Form(None),
+    photo: UploadFile | None = File(None),
+    remove_photo: bool = Form(False),
+    user_id: str = Depends(get_user_id),
+) -> dict:
+    """The finder edits their own post: description, place and/or photo. Returns {item}."""
+    # FastAPI turns an empty form field into None ("not sent"); read the raw form so an emptied
+    # description still means "clear it" and an emptied place is refused instead of ignored.
+    form = await request.form()
+    description = form.get("description") if "description" in form else None
+    location_text = form.get("location_text") if "location_text" in form else None
+    if settings.mock("lostfound"):
+        item = load_mock("items_create")["item"] | {"id": item_id}
+        if description is not None:
+            item["description"] = description.strip() or None
+        if location_text is not None:
+            item["location_text"] = location_text.strip()
+        if remove_photo:
+            item["photo_url"] = None
+        return {"item": item}
+    photo_bytes = await photo.read() if photo else None
+    try:
+        return await run_in_threadpool(
+            items.update_item,
+            item_id=item_id,
+            user_id=user_id,
+            description=description,
+            location_text=location_text,
+            photo=photo_bytes or None,
+            remove_photo=remove_photo,
+        )
     except items.ItemError as e:
         raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
 

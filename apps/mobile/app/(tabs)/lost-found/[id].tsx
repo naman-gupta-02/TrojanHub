@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
 import { DPS_DROPOFF, currentUserId, getBuildings, getItem, isMock, mockUserId, removePost, setTier, timeAgo } from '@/components/lost-found/data';
+import { EditItem } from '@/components/lost-found/EditItem';
 import { Button, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice, s } from '@/components/lost-found/ui';
 
 export default function ItemScreen() {
@@ -17,6 +18,7 @@ export default function ItemScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [buildings, setBuildings] = useState<Record<string, Building>>({});
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,6 +95,18 @@ export default function ItemScreen() {
       ) : mine ? (
         <View style={s.card}>
           <Text style={s.title}>You posted this item.</Text>
+          {editing ? (
+            <EditItem
+              item={item}
+              onSaved={(saved) => {
+                setItem(saved);
+                setEditing(false);
+              }}
+              onCancel={() => setEditing(false)}
+            />
+          ) : (
+            <Button label="Edit details" kind="secondary" onPress={() => setEditing(true)} />
+          )}
           <WhereNowChoice tier={item.tier} busy={busy} onChange={(t: ItemTier) => changeTier(item, t)} />
           <Button
             label="Take this post down"

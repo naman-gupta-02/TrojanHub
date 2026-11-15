@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { DPS_DROPOFF, currentUserId, getBuildings, getItem, isMock, removePost, setTier, timeAgo } from "../_lib/data";
+import { EditItem } from "./EditItem";
 import { BackLink, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice } from "./parts";
 
 export function ItemDetail() {
@@ -15,6 +16,7 @@ export function ItemDetail() {
   const [userId, setUserId] = useState<string | null>(null);
   const [buildings, setBuildings] = useState<Record<string, Building>>({});
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,6 +104,20 @@ export function ItemDetail() {
           ) : mine ? (
             <div className="space-y-4 rounded-lg border border-line bg-surface p-4">
               <p className="font-semibold">You posted this item.</p>
+              {editing ? (
+                <EditItem
+                  item={item}
+                  onSaved={(saved) => {
+                    setItem(saved);
+                    setEditing(false);
+                  }}
+                  onCancel={() => setEditing(false)}
+                />
+              ) : (
+                <button onClick={() => setEditing(true)} className="min-h-11 rounded-md border border-line px-4 font-semibold hover:bg-background">
+                  Edit details
+                </button>
+              )}
               <WhereNowChoice tier={item.tier} busy={busy} onChange={(t: ItemTier) => changeTier(item, t)} />
               <button
                 onClick={() => run(async () => { await removePost(item.id); setItem({ ...item, status: "claimed" }); })}
