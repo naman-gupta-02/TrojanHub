@@ -388,6 +388,7 @@ export interface FeedResponse {
 export interface ComplaintRequest {
   text: string;
   building_id?: UUID;
+  building?: string; // building code or name ("GFS", "Leavey Library") when it isn't in `text`; building_id wins
   room?: string;
   anonymous?: boolean;
   confirm?: boolean; // false/absent = draft only; true = create/merge the ticket

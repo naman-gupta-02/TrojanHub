@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     cron_secret: str = ""
 
+    # Shown for safety complaints instead of a ticket. UPC emergency line, copied from
+    # https://dps.usc.edu/contact/ on 2026-11-14. Override with DPS_EMERGENCY_PHONE.
+    dps_emergency_phone: str = "213-740-4321"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
