@@ -10,11 +10,16 @@ from app.chat.tools.base import LA, ToolContext, ToolOutcome, pacific
 from app.chat.tools.http import call
 
 
+def _now() -> datetime:
+    """Current time in LA (a function so tests can fix the clock)."""
+    return datetime.now(LA)
+
+
 def _date_range(spec: str | None) -> tuple[str | None, str | None]:
     """'today' | 'this_week' | 'YYYY-MM-DD/YYYY-MM-DD' -> UTC ISO bounds (Pacific days)."""
     if not spec:
         return None, None
-    today = datetime.now(LA).date()
+    today = _now().date()
     if spec == "today":
         start, end = today, today
     elif spec == "this_week":
@@ -62,7 +67,19 @@ async def search_events(args: dict, ctx: ToolContext) -> ToolOutcome:
     })
     if "error" in res:
         return ToolOutcome(res)
-    return ToolOutcome({"events": [_event(e) for e in res.get("events", [])[:8]]})
+    now = _now()
+    upcoming = []
+    for e in res.get("events", []):
+        start = datetime.fromisoformat(e["starts_at"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(e["ends_at"].replace("Z", "+00:00")) if e.get("ends_at") else start + timedelta(hours=2)
+        if end < now:
+            continue  # already over: "tonight" / "today" means what's still ahead
+        item = _event(e)
+        if start <= now:
+            item["happening_now"] = True
+        upcoming.append(item)
+    return ToolOutcome({"events": upcoming[:8],
+                        "note": "Events that already ended are left out. Link each event as [Title](link)."})
 
 
 async def search_deals(args: dict, ctx: ToolContext) -> ToolOutcome:

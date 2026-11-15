@@ -67,8 +67,16 @@ class FakeLLM:
 
 @pytest.fixture(autouse=True)
 def isolated(monkeypatch):
-    """Tests use the local RAG index, never the team's Supabase project, and start with no cache."""
+    """Tests use the local RAG index, never the team's Supabase project, and start with no cache.
+    The clock is fixed at 1 PM PT on Nov 14 (before the mock events), so results don't depend on
+    when the tests run."""
+    from datetime import datetime
+
+    from app.chat.tools import events as ev_tools
+    from app.chat.tools.base import LA
+
     monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(ev_tools, "_now", lambda: datetime(2026, 11, 14, 13, 0, tzinfo=LA))
     store.cache_clear()
 
 
@@ -456,3 +464,20 @@ def test_flyer_without_a_date_is_not_posted(client, llm):
         assert body["status"] == "failed" and "doesn't show when it is" in body["message"]
     finally:
         runner.HANDLERS["scan_flyer"] = original
+
+
+def test_tonight_leaves_out_events_that_already_ended(client, llm, monkeypatch):
+    from datetime import datetime
+
+    from app.chat.tools import events as ev_tools
+    from app.chat.tools.base import LA
+
+    # 6:30 PM PT: the boba event (2-4 PM) is over, the SWE meeting (6-7 PM) is on right now
+    monkeypatch.setattr(ev_tools, "_now", lambda: datetime(2026, 11, 14, 18, 30, tzinfo=LA))
+    llm(tool_step("search_events", query="events tonight", date_range="today"), text_step("Here's what's on."))
+    result = next(e for e in chat(client, "what's happening tonight?", session="tn1") if e["type"] == "tool_result")["result"]
+    titles = [e["title"] for e in result["events"]]
+    assert not any("boba" in t.lower() for t in titles)
+    swe = next(e for e in result["events"] if "SWE" in e["title"])
+    assert swe["happening_now"] is True
+    assert all(e["link"].startswith("/events/") for e in result["events"])

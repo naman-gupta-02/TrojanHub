@@ -125,7 +125,8 @@ export function parseAnswer(raw: string): Piece[] {
   // The app keeps "(Sources used: …)" in chat history for Tommy; if the model ever copies it, hide it.
   const text = raw.replace(/\s*\(Sources used:[^)]*\)\s*$/, "");
   const pieces: Piece[] = [];
-  const re = /\[(\d+)\]|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)]+[^\s).,])/g;
+  // [n] citation | **bold** | [text](https://… or /page-in-the-app) | bare https://…
+  const re = /\[(\d+)\]|\*\*([^*]+)\*\*|\[([^\]]+)\]\(\s*(https?:\/\/[^)\s]+|\/[^)\s]*)\s*\)|(https?:\/\/[^\s)]+[^\s).,])/g;
   let last = 0;
   for (let m = re.exec(text); m; m = re.exec(text)) {
     if (m.index > last) pieces.push({ kind: "text", text: text.slice(last, m.index) });
@@ -147,6 +148,11 @@ export function chatErrorMessage(e: unknown, offlineHint: string): string {
   if (status === 401) return SIGN_IN_TO_CHAT;
   if (status === 429) return "Tommy is busy right now. Please try again in a minute.";
   return offlineHint;
+}
+
+/** "/events/123" is a page inside TrojanHub; "https://…" is another website. */
+export function isInternalLink(url: string): boolean {
+  return url.startsWith("/") && !url.startsWith("//");
 }
 
 export function newSessionId(): string {
