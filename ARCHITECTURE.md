@@ -272,6 +272,8 @@ real endpoint exists.
 | POST | `/flyers/scan` | `{image_url}` → `{type:"event"|"deal", fields:{title, starts_at, ends_at, location_text, building_id?, is_free, has_freebie, freebie_desc, register_url, org_name, category}, missing:[…], duplicate_of?: id}` |
 | GET | `/events/search` | `?q=&from=&to=&category=&free=&freebie=` → `{events:[…]}` (simple SQL + optional semantic) |
 | GET | `/deals/search` | `?q=&active=true` → `{deals:[…]}` |
+| PATCH | `/events/{id}` | any `POST /events` fields (no `flyer_url`/`force`) → `{event}`. Poster, org owner or admin only (403); `GET /events/{id}` returns `can_edit` |
+| DELETE | `/events/{id}` | → `{deleted:true}` (status → `cancelled`, hidden everywhere). Same people as PATCH |
 | POST | `/events/{id}/save` | `{register?: bool}` → `{saved:true, ics_url, register_url?}` |
 | GET | `/events/{id}/ics` | → `.ics` file (Google/Apple calendar) |
 | GET | `/rewards/progress` | → `[{program, attended, required, next_eligible_events:[…]}]` |

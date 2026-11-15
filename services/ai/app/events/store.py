@@ -169,6 +169,12 @@ def insert_event(row: dict) -> dict:
     return get_event(_rows(res)[0]["id"]) or _rows(res)[0]
 
 
+def update_event(event_id: str, fields: dict) -> dict | None:
+    """Saves the poster's edits. Setting status "cancelled" hides it from search and the feed."""
+    get_supabase().table("events").update(fields).eq("id", event_id).execute()
+    return get_event(event_id)
+
+
 # ---------------------------------------------------------------------------
 # Deals
 # ---------------------------------------------------------------------------

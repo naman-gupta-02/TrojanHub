@@ -2,7 +2,7 @@
 // P3 Parnavi: event detail (Add to calendar, Register, Save, tickets, check-in, rewards it counts toward).
 import type { CheckinResponse, EventDetailResponse } from "@trojanhub/shared/types";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
@@ -168,6 +168,7 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
           )}
         </div>
 
+        {d.can_edit && <YourEvent eventId={e.id} title={e.title} />}
         <CheckIn detail={d} onChange={onChange} />
         <OrganizerCode eventId={e.id} />
       </aside>
@@ -307,6 +308,46 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
       </form>
       {error && (
         <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Only for the person who posted it: fix a mistake, or take it down. */
+function YourEvent({ eventId, title }: { eventId: string; title: string }) {
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function remove() {
+    if (!window.confirm(`Delete "${title}"? It will be removed from TrojanHub for everyone.`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.events.remove(eventId);
+      router.push("/events");
+    } catch (err) {
+      setError(errorMessage(err));
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-line bg-surface p-5 text-sm">
+      <p className="font-bold">✏️ You posted this</p>
+      <p className="text-muted">Spotted a mistake? Fix it here.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Link href={`/events/${eventId}/edit`} className={btn.primary}>
+          Edit event
+        </Link>
+        <button onClick={remove} disabled={deleting} className={`${btn.secondary} text-danger`}>
+          {deleting ? "Deleting…" : "Delete"}
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="text-danger">
           {error}
         </p>
       )}

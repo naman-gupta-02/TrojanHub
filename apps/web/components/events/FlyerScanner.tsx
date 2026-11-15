@@ -1,10 +1,11 @@
 "use client";
 // P3 Parnavi: flyer scanner. Photo -> upload -> AI reads it -> editable form (confidence + missing) -> event or deal.
+// <EditEvent /> (/events/[id]/edit) is the same form filled with a posted event, so its poster can fix mistakes.
 import { ApiRequestError } from "@trojanhub/shared/api";
-import type { EventCategory, FlyerFields, FlyerScanResponse } from "@trojanhub/shared/types";
+import type { Event, EventCategory, FlyerFields, FlyerScanResponse } from "@trojanhub/shared/types";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 
@@ -51,10 +52,35 @@ function alreadyEnded(kind: Kind, form: Form): boolean {
   return end !== null && end <= Date.now();
 }
 
-export function FlyerScanner() {
+function formFromEvent(e: Event): Form {
+  return {
+    ...EMPTY,
+    title: e.title,
+    description: e.description ?? "",
+    starts_at: toLocalInput(e.starts_at),
+    ends_at: toLocalInput(e.ends_at),
+    location_text: e.location_text ?? "",
+    category: e.category,
+    is_free: e.is_free,
+    has_freebie: e.has_freebie,
+    freebie_desc: e.freebie_desc ?? "",
+    register_url: e.register_url ?? "",
+    ticket_url: e.ticket_url ?? "",
+    tickets_open_at: toLocalInput(e.tickets_open_at),
+    org_name: e.org_name ?? "",
+  };
+}
+
+export function EditEvent() {
+  const { id } = useParams<{ id: string }>();
+  return <FlyerScanner editId={id} />;
+}
+
+export function FlyerScanner({ editId }: { editId?: string } = {}) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [stage, setStage] = useState<Stage>("pick");
+  const [original, setOriginal] = useState<Form | null>(null); // the event as posted, in edit mode
+  const [stage, setStage] = useState<Stage>(editId ? "reading" : "pick");
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState<string | null>(null);
   const [flyerUrl, setFlyerUrl] = useState<string | null>(null);
@@ -68,6 +94,29 @@ export function FlyerScanner() {
   const [dragging, setDragging] = useState(false);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
+
+  useEffect(() => {
+    if (!editId) return;
+    let cancelled = false;
+    api.events
+      .get(editId)
+      .then(({ event, can_edit }) => {
+        if (cancelled) return;
+        if (!can_edit) return setError("Only the person who posted this event can edit it.");
+        const f = formFromEvent(event);
+        setForm(f);
+        setOriginal(f);
+        setPreview(event.flyer_url);
+        setStage("form");
+      })
+      .catch((e: unknown) => !cancelled && setError(errorMessage(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [editId]);
+
+  // the server refuses past dates, so an already-over event can still get its typo fixed if the time stays the same
+  const datesChanged = !original || form.starts_at !== original.starts_at || form.ends_at !== original.ends_at;
 
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -128,10 +177,26 @@ export function FlyerScanner() {
     setError(null);
     if (form.title.trim().length < 3) return setError("Add a title (at least 3 characters).");
     if (kind === "event" && !form.starts_at) return setError("When does it start?");
-    if (alreadyEnded(kind, form)) return; // the banner explains; the server refuses it too
+    if (datesChanged && alreadyEnded(kind, form)) return; // the banner explains; the server refuses it too
     setSaving(true);
     try {
-      if (kind === "event") {
+      if (editId) {
+        await api.events.update(editId, {
+          title: form.title.trim(),
+          description: form.description || null,
+          ...(datesChanged ? { starts_at: fromLocalInput(form.starts_at)!, ends_at: fromLocalInput(form.ends_at) } : {}),
+          location_text: form.location_text || null,
+          category: form.category,
+          is_free: form.is_free,
+          has_freebie: form.has_freebie,
+          freebie_desc: form.has_freebie ? form.freebie_desc || null : null,
+          register_url: form.register_url || null,
+          ticket_url: form.ticket_url || null,
+          tickets_open_at: fromLocalInput(form.tickets_open_at),
+          org_name: form.org_name || null,
+        });
+        router.push(`/events/${editId}`);
+      } else if (kind === "event") {
         const { event } = await api.events.create({
           title: form.title.trim(),
           description: form.description || null,
@@ -215,6 +280,24 @@ export function FlyerScanner() {
     );
   }
 
+  // ----- loading the event to edit ---------------------------------------------
+  if (editId && stage === "reading") {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4">
+        {error ? (
+          <>
+            <p role="alert" className="rounded-xl bg-danger/5 p-3 text-sm text-danger">{error}</p>
+            <Link href={`/events/${editId}`} className={btn.secondary}>
+              Back to the event
+            </Link>
+          </>
+        ) : (
+          <p className="text-muted">Loading your event…</p>
+        )}
+      </div>
+    );
+  }
+
   // ----- reading -------------------------------------------------------------
   if (stage === "reading") {
     return (
@@ -256,7 +339,7 @@ export function FlyerScanner() {
   });
   const filled = scan ? Object.keys(conf).length : 0;
   const toCheck = scan ? Object.values(conf).filter((v) => (v ?? 1) < LOW).length : 0;
-  const ended = alreadyEnded(kind, form);
+  const ended = datesChanged && alreadyEnded(kind, form);
   const endedText =
     kind === "deal"
       ? "This deal already expired, so it can't be posted."
@@ -267,9 +350,15 @@ export function FlyerScanner() {
   return (
     <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
       <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-        <button onClick={() => setStage("pick")} className="text-sm font-semibold text-cardinal hover:underline">
-          ← Scan a different flyer
-        </button>
+        {editId ? (
+          <Link href={`/events/${editId}`} className="text-sm font-semibold text-cardinal hover:underline">
+            ← Back to the event
+          </Link>
+        ) : (
+          <button onClick={() => setStage("pick")} className="text-sm font-semibold text-cardinal hover:underline">
+            ← Scan a different flyer
+          </button>
+        )}
         {preview && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="Your flyer" className="w-full rounded-2xl border border-line object-contain" />
@@ -295,21 +384,25 @@ export function FlyerScanner() {
         className="space-y-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-3xl font-extrabold">{scan ? "Check the details" : "Add an event or deal"}</h1>
-          <div className="flex rounded-full border border-line bg-surface p-1" role="radiogroup" aria-label="Post type">
-            {(["event", "deal"] as Kind[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                role="radio"
-                aria-checked={kind === k}
-                onClick={() => setKind(k)}
-                className={`min-h-9 rounded-full px-4 text-sm font-semibold ${kind === k ? "bg-cardinal text-white" : "text-muted"}`}
-              >
-                {k === "event" ? "📅 Event" : "🎁 Deal"}
-              </button>
-            ))}
-          </div>
+          <h1 className="text-3xl font-extrabold">{editId ? "Edit your event" : scan ? "Check the details" : "Add an event or deal"}</h1>
+          {editId ? (
+            <p className="w-full text-sm text-muted">Fix anything that&apos;s wrong, then save. People who saved it see the update.</p>
+          ) : (
+            <div className="flex rounded-full border border-line bg-surface p-1" role="radiogroup" aria-label="Post type">
+              {(["event", "deal"] as Kind[]).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === k}
+                  onClick={() => setKind(k)}
+                  className={`min-h-9 rounded-full px-4 text-sm font-semibold ${kind === k ? "bg-cardinal text-white" : "text-muted"}`}
+                >
+                  {k === "event" ? "📅 Event" : "🎁 Deal"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {ended && (
@@ -319,7 +412,7 @@ export function FlyerScanner() {
           </div>
         )}
 
-        {duplicate && !ended && (
+        {duplicate && !ended && !editId && (
           <div role="alert" className="space-y-2 rounded-2xl border border-gold bg-gold/15 p-4">
             <p className="font-bold">👀 This might already be posted</p>
             <p className="text-sm">
@@ -435,9 +528,9 @@ export function FlyerScanner() {
 
         <div className="flex flex-wrap gap-3 border-t border-line pt-6">
           <button disabled={saving || ended} className={`${btn.primary} disabled:cursor-not-allowed disabled:opacity-50`}>
-            {saving ? "Posting…" : kind === "event" ? "Post event" : "Post deal"}
+            {editId ? (saving ? "Saving…" : "Save changes") : saving ? "Posting…" : kind === "event" ? "Post event" : "Post deal"}
           </button>
-          <Link href="/events" className={btn.secondary}>
+          <Link href={editId ? `/events/${editId}` : "/events"} className={btn.secondary}>
             Cancel
           </Link>
         </div>

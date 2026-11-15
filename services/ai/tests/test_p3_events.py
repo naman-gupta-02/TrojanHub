@@ -296,3 +296,64 @@ def test_my_checkins_newest_first(client, monkeypatch):
     r = client.get("/api/rewards/checkins")
     assert r.status_code == 200
     assert [c["event"]["id"] for c in r.json()["checkins"]] == ["e2", "e1"]
+
+
+# ---------------------------------------------------------------------------
+# Editing and deleting a posted event
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def edits(client, monkeypatch):
+    saved = []
+    monkeypatch.setattr(store, "update_event", lambda eid, fields: saved.append(fields) or {**EVENT, **fields})
+    monkeypatch.setattr(store, "buildings", lambda: BUILDINGS)
+    monkeypatch.setattr(store, "find_org", lambda name: None)
+    return saved
+
+
+def test_only_the_poster_sees_the_edit_button(client, monkeypatch):
+    monkeypatch.setattr(store, "saves_for_user", lambda uid: {})
+    monkeypatch.setattr(store, "attended_ids", lambda uid: set())
+    monkeypatch.setattr(store, "reward_programs", lambda: [])
+    url = f"/api/events/{EVENT['id']}"
+    assert client.get(url).json()["can_edit"] is True
+    client.who["id"] = BOB
+    assert client.get(url).json()["can_edit"] is False
+    client.who["id"] = routes.DEMO_USER_ID  # signed out
+    assert client.get(url).json()["can_edit"] is False
+
+
+def test_poster_can_fix_a_mistake(client, edits):
+    later = iso(now_utc() + timedelta(days=3))
+    r = client.patch(f"/api/events/{EVENT['id']}", json={"title": "  Hack Night v2 ", "starts_at": later,
+                                                          "location_text": "Leavey 2nd floor", "has_freebie": False,
+                                                          "freebie_desc": "pizza", "register_url": "lu.ma/hack"})
+    assert r.status_code == 200, r.text
+    f = edits[-1]
+    assert f["title"] == "Hack Night v2" and f["building_id"] == LVL and f["freebie_desc"] is None
+    assert f["register_url"] == "https://lu.ma/hack" and routes.parse_ts(f["starts_at"]) == routes.parse_ts(later)
+    assert "posted_by" not in f and "status" not in f  # can't hand the event to someone else or un-delete it
+
+
+def test_someone_else_cant_edit_or_delete(client, edits):
+    client.who["id"] = BOB
+    assert client.patch(f"/api/events/{EVENT['id']}", json={"title": "Mine now"}).status_code == 403
+    assert client.delete(f"/api/events/{EVENT['id']}").status_code == 403
+    assert edits == []
+    client.who["id"] = ADMIN
+    assert client.patch(f"/api/events/{EVENT['id']}", json={"title": "Fixed by USG"}).status_code == 200
+
+
+def test_edit_checks_the_dates(client, edits):
+    url = f"/api/events/{EVENT['id']}"
+    r = client.patch(url, json={"ends_at": iso(now_utc() + timedelta(days=1))})  # before the start
+    assert r.status_code == 422 and r.json()["error"]["code"] == "bad_dates"
+    r = client.patch(url, json={"starts_at": iso(now_utc() - timedelta(days=2))})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "event_in_past"
+    assert edits == []
+
+
+def test_delete_hides_the_event(client, edits, monkeypatch):
+    assert client.delete(f"/api/events/{EVENT['id']}").json() == {"deleted": True}
+    assert edits[-1] == {"status": "cancelled"}
+    monkeypatch.setattr(store, "get_event", lambda eid: {**EVENT, "status": "cancelled"})
+    assert client.get(f"/api/events/{EVENT['id']}").status_code == 404

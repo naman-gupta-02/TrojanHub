@@ -2,9 +2,9 @@
 import type { CheckinResponse, EventDetailResponse } from '@trojanhub/shared/types';
 import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import * as Linking from 'expo-linking';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Button, Chip, ErrorBox, Loading, canCheckIn, categoryInfo, errorMessage, fmtTime, relativeDay, s, timeRange, untilLabel, useApi, useNow } from '@/components/events/kit';
 import { api } from '@/lib/api';
@@ -12,6 +12,15 @@ import { api } from '@/lib/api';
 export default function EventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const detail = useApi(() => api.events.get(id), id);
+  // reload when coming back from "Edit event", so the fixes show up
+  const firstFocus = useRef(true);
+  const { reload } = detail;
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) firstFocus.current = false;
+      else reload();
+    }, [reload]),
+  );
 
   return (
     <>
@@ -127,9 +136,51 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
         )}
       </View>
 
+      {d.can_edit && <YourEvent eventId={e.id} title={e.title} />}
       <CheckIn detail={d} onChange={onChange} />
       <OrganizerCode eventId={e.id} />
     </>
+  );
+}
+
+/** Only for the person who posted it: fix a mistake, or take it down. */
+function YourEvent({ eventId, title }: { eventId: string; title: string }) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function confirmDelete() {
+    Alert.alert('Delete this event?', `"${title}" will be removed from TrojanHub for everyone.`, [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          setError(null);
+          try {
+            await api.events.remove(eventId);
+            router.back();
+          } catch (err) {
+            setError(errorMessage(err));
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
+  }
+
+  return (
+    <View style={[s.card, { flexDirection: 'column', gap: spacing.sm }]}>
+      <Text style={s.cardTitle}>✏️ You posted this</Text>
+      <Text style={s.cardMeta}>Spotted a mistake? Fix it here.</Text>
+      <Button title="Edit event" onPress={() => router.push({ pathname: '/events/scan', params: { edit: eventId } })} disabled={deleting} />
+      <Button title="Delete event" kind="secondary" onPress={confirmDelete} busy={deleting} />
+      {error && (
+        <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: fontSize.sm }}>
+          {error}
+        </Text>
+      )}
+    </View>
   );
 }
 

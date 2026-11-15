@@ -3,8 +3,10 @@
 POST   /flyers/upload            multipart {photo}            -> {image_url}
 POST   /flyers/scan              {image_url}                  -> FlyerScanResponse (+ confidence, extra, duplicate)
 GET    /events/search            ?q=&from=&to=&category=&free=&freebie=
-GET    /events/{id}              -> {event, saved, registered, attended, counts_toward, google_calendar_url}
+GET    /events/{id}              -> {event, saved, registered, attended, counts_toward, google_calendar_url, can_edit}
 POST   /events                   create (from a scanned flyer or the form); 409 if it's a duplicate, 422 if it ended
+PATCH  /events/{id}              edit (only the poster, the org owner or an admin) -> {event}
+DELETE /events/{id}              take it down (same people; status -> cancelled) -> {deleted}
 POST   /events/{id}/save         {register?}
 DELETE /events/{id}/save
 GET    /events/{id}/ics
@@ -35,7 +37,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.auth import ADMIN_ROLES, get_user_id, require_signed_in
+from app.core.auth import ADMIN_ROLES, DEMO_USER_ID, get_user_id, require_signed_in
 from app.core.config import settings
 from app.core.mocks import load_mock
 from app.core.supabase import get_supabase
@@ -106,6 +108,29 @@ class EventCreate(BaseModel):
         return _https(v)
 
 
+class EventUpdate(BaseModel):
+    """Fix a mistake in a posted event. Only the fields sent are changed."""
+    title: str | None = Field(None, min_length=3, max_length=200)
+    description: str | None = Field(None, max_length=2000)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    location_text: str | None = Field(None, max_length=200)
+    building_id: str | None = None
+    category: Category | None = None
+    is_free: bool | None = None
+    has_freebie: bool | None = None
+    freebie_desc: str | None = Field(None, max_length=200)
+    register_url: str | None = None
+    ticket_url: str | None = None
+    tickets_open_at: datetime | None = None
+    org_name: str | None = Field(None, max_length=120)
+
+    @field_validator("register_url", "ticket_url")
+    @classmethod
+    def _add_scheme(cls, v: str | None) -> str | None:
+        return _https(v)
+
+
 class DealCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     description: str | None = Field(None, max_length=2000)
@@ -133,7 +158,7 @@ def _event_or_404(event_id: str) -> dict:
     if not db_live():
         return _mock_event(event_id)
     event = store.get_event(event_id)
-    if not event:
+    if not event or event.get("status") == "cancelled":  # deleted by its poster
         raise _not_found()
     return event
 
@@ -161,6 +186,16 @@ def _is_organizer(event: dict, user_id: str) -> bool:
             return True
     profile = store.profile(user_id)
     return bool(profile and profile.get("role") in ADMIN_ROLES)
+
+
+def _can_edit(event: dict, user_id: str) -> bool:
+    """Real signed-in organizers only (seed events are "posted" by the signed-out demo user)."""
+    return db_live() and user_id != DEMO_USER_ID and _is_organizer(event, user_id)
+
+
+def _organizer_or_403(event: dict, user_id: str, action: str) -> None:
+    if db_live() and not _can_edit(event, user_id):
+        raise HTTPException(403, detail={"code": "forbidden", "message": f"Only the person who posted this event can {action} it"})
 
 
 def checkin_code(event_id: str) -> str:
@@ -299,6 +334,7 @@ def get_event(event_id: str, user_id: str = Depends(get_user_id)) -> dict:
         "counts_toward": counts_toward,
         "google_calendar_url": ics.google_calendar_url(event),
         "ics_url": f"/api/events/{event_id}/ics",
+        "can_edit": _can_edit(event, user_id),
     }
 
 
@@ -354,6 +390,63 @@ def create_event(req: EventCreate, user_id: str = Depends(require_signed_in)) ->
         "status": "published",
     }
     return {"event": store.insert_event(row)}
+
+
+@router.patch("/events/{event_id}")
+def update_event(event_id: str, req: EventUpdate, user_id: str = Depends(require_signed_in)) -> dict:
+    event = _event_or_404(event_id)
+    _organizer_or_403(event, user_id, "edit")
+    sent = req.model_dump(exclude_unset=True)
+    if "title" in sent and not (sent["title"] or "").strip():
+        raise HTTPException(422, detail={"code": "bad_title", "message": "The event needs a title"})
+
+    fields: dict = {}
+    for k in ("description", "location_text", "category", "is_free", "has_freebie", "freebie_desc",
+              "register_url", "ticket_url"):
+        if k in sent and not (k in ("category", "is_free", "has_freebie") and sent[k] is None):
+            fields[k] = sent[k]
+    if sent.get("title"):
+        fields["title"] = sent["title"].strip()
+    if "tickets_open_at" in sent:
+        fields["tickets_open_at"] = iso(parse_ts(sent["tickets_open_at"]))
+
+    if "starts_at" in sent or "ends_at" in sent:
+        starts = parse_ts(sent.get("starts_at")) or parse_ts(event["starts_at"])
+        ends = parse_ts(sent["ends_at"]) if "ends_at" in sent else parse_ts(event.get("ends_at"))
+        if ends and ends <= starts:
+            raise HTTPException(422, detail={"code": "bad_dates", "message": "The end time must be after the start time"})
+        if has_ended(starts, ends):
+            raise HTTPException(422, detail={"code": "event_in_past",
+                                             "message": "That time has already passed. Pick an upcoming date."})
+        fields["starts_at"], fields["ends_at"] = iso(starts), iso(ends)
+
+    if fields.get("has_freebie") is False:
+        fields["freebie_desc"] = None
+
+    if not db_live():
+        return {"event": {**event, **fields}}
+
+    if "org_name" in sent:
+        org = store.find_org(sent["org_name"])
+        fields["org_id"] = org["id"] if org else None
+    if sent.get("building_id") and store.is_uuid(sent["building_id"]):
+        fields["building_id"] = sent["building_id"]
+    elif "location_text" in sent or "building_id" in sent:
+        fields["building_id"] = flyer.match_building(None, fields.get("location_text", event.get("location_text")),
+                                                     store.buildings())
+    if not fields:
+        return {"event": event}
+    return {"event": store.update_event(event_id, fields) or {**event, **fields}}
+
+
+@router.delete("/events/{event_id}")
+def delete_event(event_id: str, user_id: str = Depends(require_signed_in)) -> dict:
+    """Takes the event down. It's marked cancelled (not erased), so saves and check-ins stay valid."""
+    event = _event_or_404(event_id)
+    _organizer_or_403(event, user_id, "delete")
+    if db_live():
+        store.update_event(event_id, {"status": "cancelled"})
+    return {"deleted": True}
 
 
 @router.post("/events/{event_id}/save")
