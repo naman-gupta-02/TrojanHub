@@ -4,7 +4,7 @@ import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import * as Linking from 'expo-linking';
 import { Link, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
   CATEGORIES,
@@ -44,7 +44,7 @@ export default function EventsScreen() {
             {tab === 'events' ? 'Events' : tab === 'deals' ? 'Deals & Freebies' : 'Rewards'}
           </Text>
           <Link href="/events/scan" asChild>
-            <Pressable style={[s.button, { backgroundColor: colors.cardinal, borderColor: colors.cardinal, paddingHorizontal: spacing.lg }]} accessibilityRole="button">
+            <Pressable style={StyleSheet.flatten([s.button, { backgroundColor: colors.cardinal, borderColor: colors.cardinal, paddingHorizontal: spacing.lg }])} accessibilityRole="button">
               <Text style={[s.buttonText, { color: '#fff' }]}>📸 Scan</Text>
             </Pressable>
           </Link>
@@ -203,7 +203,7 @@ function RewardsTab() {
             Sign in with your @usc.edu email to track your own check-ins.
           </Text>
           <Link href="/auth/login" asChild>
-            <Pressable style={[s.button, { backgroundColor: colors.cardinal, borderColor: colors.cardinal, alignSelf: 'flex-start' }]} accessibilityRole="button">
+            <Pressable style={StyleSheet.flatten([s.button, { backgroundColor: colors.cardinal, borderColor: colors.cardinal, alignSelf: 'flex-start' }])} accessibilityRole="button">
               <Text style={[s.buttonText, { color: '#fff' }]}>Sign in</Text>
             </Pressable>
           </Link>
