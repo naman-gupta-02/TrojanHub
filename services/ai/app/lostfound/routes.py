@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.auth import get_user_id
 from app.core.config import settings
 from app.core.mocks import load_mock, not_built
-from app.lostfound import items
+from app.lostfound import items, search
 
 router = APIRouter(tags=["lost & found (P2)"])
 OWNER = "P2 Vishwa"
@@ -60,14 +60,21 @@ async def create_item(
 async def search_items(q: str, building_id: str | None = None, user_id: str = Depends(get_user_id)) -> dict:
     if settings.use_mocks:
         return load_mock("items_search")
-    raise not_built(OWNER)
+    try:
+        return await run_in_threadpool(search.search_text, q, building_id)
+    except items.ItemError as e:
+        raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
 
 
 @router.post("/items/search-by-image")
 async def search_items_by_image(photo: UploadFile = File(...), user_id: str = Depends(get_user_id)) -> dict:
     if settings.use_mocks:
         return load_mock("items_search")
-    raise not_built(OWNER)
+    photo_bytes = await photo.read()
+    try:
+        return await run_in_threadpool(search.search_photo, photo_bytes)
+    except items.ItemError as e:
+        raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
 
 
 @router.post("/items/{item_id}/claim")
