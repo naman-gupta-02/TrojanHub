@@ -78,23 +78,26 @@ export default function LostFoundPage() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Lost &amp; Found</h1>
-          <p className="text-muted">Lost something on campus? Search here. Found something? Post it in one step.</p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/lost-found/report" className="inline-flex min-h-11 items-center rounded-md bg-cardinal px-4 font-semibold text-white hover:bg-cardinal-dark">
-            I found something
+      <div className="lf-hero relative overflow-hidden rounded-3xl p-6 text-white shadow-lg sm:p-8">
+        <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 select-none text-[9rem] leading-none opacity-10">
+          🔎
+        </span>
+        <div className="relative flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold">Trojans helping Trojans</p>
+            <h1 className="text-4xl font-black tracking-tight">Lost &amp; Found</h1>
+            <p className="mt-1 max-w-xl text-white/85">Lost something on campus? Search here. Found something? Post it in one step.</p>
+          </div>
+          <Link
+            href="/lost-found/report"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-gold px-5 font-bold text-ink shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+          >
+            <span aria-hidden>📸</span> I found something
           </Link>
         </div>
-      </div>
 
-      {signedIn === false ? (
-        <SignInNotice what="search and post lost items" />
-      ) : (
-        <>
-          <form onSubmit={searchWords} className="flex flex-wrap gap-2" role="search">
+        {signedIn !== false && (
+          <form onSubmit={searchWords} className="relative mt-6 flex flex-wrap gap-2" role="search">
             <label htmlFor="lf-q" className="sr-only">
               What did you lose?
             </label>
@@ -103,24 +106,33 @@ export default function LostFoundPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="What did you lose? e.g. black Hydro Flask with a Trojans sticker"
-              className="min-h-11 min-w-0 flex-1 rounded-md border border-line bg-surface px-3"
+              className="lf-input min-h-12 min-w-0 flex-1 rounded-full border-2 border-transparent bg-white px-5 text-ink shadow-sm"
             />
-            <button disabled={busy} className="min-h-11 rounded-md bg-cardinal px-5 font-semibold text-white hover:bg-cardinal-dark disabled:opacity-60">
+            <button disabled={busy} className="min-h-12 rounded-full bg-gold px-6 font-bold text-ink shadow-sm transition hover:brightness-105 disabled:opacity-60">
               {busy ? "Searching…" : "Search"}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => fileInput.current?.click()}
-              className="min-h-11 rounded-md border border-line bg-surface px-4 font-semibold hover:bg-background disabled:opacity-60"
+              className="min-h-12 rounded-full border-2 border-white/60 px-5 font-semibold text-white transition hover:border-white hover:bg-white/10 disabled:opacity-60"
             >
-              Search by photo
+              <span aria-hidden>📷</span> Search by photo
             </button>
             <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Photo of the item you lost" onChange={(e) => searchPhoto(e.target.files?.[0])} />
           </form>
+        )}
+      </div>
 
-          <p className="text-sm text-muted">
-            Valuables (phones, wallets, IDs, keys, AirPods…) are kept at DPS Lost &amp; Found, which checks who really owns them.
+      {signedIn === false ? (
+        <SignInNotice what="search and post lost items" />
+      ) : (
+        <>
+          <p className="flex items-start gap-2 rounded-xl border border-gold/50 bg-gold/10 px-4 py-3 text-sm">
+            <span aria-hidden>🛡️</span>
+            <span>
+              Valuables (phones, wallets, IDs, keys, AirPods…) are kept at <b>DPS Lost &amp; Found</b>, which checks who really owns them.
+            </span>
           </p>
 
           {error && <ErrorNote message={error} />}
@@ -128,7 +140,10 @@ export default function LostFoundPage() {
           {results && (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-xl font-semibold">{results.label}</h2>
+                <h2 className="text-xl font-extrabold">
+                  <span className="mr-2 inline-block h-5 w-1.5 translate-y-0.5 rounded-full bg-gold" aria-hidden />
+                  {results.label}
+                </h2>
                 {results.label !== "Recently found" && (
                   <button
                     onClick={() => {
@@ -142,7 +157,7 @@ export default function LostFoundPage() {
                 )}
               </div>
               {results.items.length === 0 ? (
-                <div className="rounded-lg border border-line bg-surface p-4 text-muted">
+                <div className="fade-up rounded-2xl border border-dashed border-line bg-surface p-6 text-center text-muted">
                   {results.label === "Recently found" ? (
                     "Nothing has been posted yet."
                   ) : (
@@ -156,7 +171,7 @@ export default function LostFoundPage() {
                   )}
                 </div>
               ) : (
-                <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                <ul key={results.label} className="lf-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   {results.items.map(({ item, score }) => (
                     <li key={item.id} className="flex">
                       <ItemCard item={item} buildings={buildings} score={score} />

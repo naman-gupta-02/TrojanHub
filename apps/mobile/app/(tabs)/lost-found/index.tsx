@@ -8,7 +8,7 @@ import { FlatList, RefreshControl, Text, TextInput, View } from 'react-native';
 
 import { api } from '@/lib/api';
 import { currentUserId, getBuildings, isMock, listRecent, pickPhoto, searchByPhoto } from '@/components/lost-found/data';
-import { Button, ErrorNote, ItemRow, SignInNotice, s } from '@/components/lost-found/ui';
+import { Button, ErrorNote, Hero, ItemRow, SignInNotice, s } from '@/components/lost-found/ui';
 
 type Results = { label: string; items: { item: Item; score?: number }[] };
 
@@ -81,8 +81,9 @@ export default function LostFoundHome() {
 
   const header = (
     <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
-      <Text style={s.muted}>Lost something on campus? Search here. Found something? Post it in one step.</Text>
-      <Button label="I found something" onPress={() => router.push('/lost-found/report')} />
+      <Hero eyebrow="Trojans helping Trojans" title="Find it fast" subtitle="Lost something on campus? Search here. Found something? Post it in one step.">
+        <Button label="📸  I found something" kind="gold" onPress={() => router.push('/lost-found/report')} />
+      </Hero>
       {signedIn === false ? (
         <SignInNotice what="search and post lost items" />
       ) : (
@@ -102,14 +103,19 @@ export default function LostFoundHome() {
               <Button label="Search" onPress={searchWords} busy={busy} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button label="Search by photo" kind="secondary" onPress={searchPhoto} disabled={busy} />
+              <Button label="📷 By photo" kind="secondary" onPress={searchPhoto} disabled={busy} />
             </View>
           </View>
-          <Text style={s.small}>Valuables (phones, wallets, IDs, keys, AirPods…) are kept at DPS Lost & Found, which checks who really owns them.</Text>
+          <View style={s.note}>
+            <Text style={{ fontSize: 13, color: colors.ink }}>🛡️ Valuables (phones, wallets, IDs, keys, AirPods…) are kept at DPS Lost & Found, which checks who really owns them.</Text>
+          </View>
           {error && <ErrorNote message={error} />}
           {results && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={s.h2}>{results.label}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <View style={{ width: 5, height: 20, borderRadius: 3, backgroundColor: colors.gold }} />
+                <Text style={[s.h2, { fontWeight: '800' }]}>{results.label}</Text>
+              </View>
               {results.label !== 'Recently found' && (
                 <Text
                   accessibilityRole="button"

@@ -11,8 +11,8 @@ import { matchLabel, placeMapLink, timeAgo, whereFound } from './data';
 export function TierBadge({ tier }: { tier: ItemTier }) {
   const valuable = tier === 'valuable';
   return (
-    <View style={[s.badge, { backgroundColor: valuable ? colors.valuable : colors.everyday }]}>
-      <Text style={s.badgeText}>{valuable ? 'At DPS' : 'Left where found'}</Text>
+    <View style={[s.badge, { backgroundColor: valuable ? colors.valuable : colors.everyday }, valuable && { borderWidth: 1, borderColor: colors.gold }]}>
+      <Text style={s.badgeText}>{valuable ? '🛡️ At DPS' : '📍 Left where found'}</Text>
     </View>
   );
 }
@@ -90,7 +90,7 @@ export function ItemPhoto({ item, size }: { item: Pick<Item, 'photo_url' | 'titl
 /** A tappable card. (Not <Link asChild>: it drops a Pressable's style function on web.) */
 export function Card({ onPress, label, children }: { onPress: () => void; label: string; children: ReactNode }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="link" accessibilityLabel={label} style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>
+    <Pressable onPress={onPress} accessibilityRole="link" accessibilityLabel={label} style={({ pressed }) => [s.row, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }], borderColor: colors.cardinal }]}>
       {children}
     </Pressable>
   );
@@ -113,7 +113,19 @@ export function ItemRow({ item, buildings, score }: { item: Item; buildings: Rec
   );
 }
 
-export function Button({ label, onPress, kind = 'primary', busy, disabled }: { label: string; onPress: () => void; kind?: 'primary' | 'secondary'; busy?: boolean; disabled?: boolean }) {
+/** The cardinal banner at the top of the Lost & Found screens. */
+export function Hero({ eyebrow, title, subtitle, children }: { eyebrow: string; title: string; subtitle: string; children?: ReactNode }) {
+  return (
+    <View style={s.hero}>
+      <Text style={s.heroEyebrow}>{eyebrow.toUpperCase()}</Text>
+      <Text style={s.heroTitle} accessibilityRole="header">{title}</Text>
+      <Text style={s.heroSub}>{subtitle}</Text>
+      {children ? <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>{children}</View> : null}
+    </View>
+  );
+}
+
+export function Button({ label, onPress, kind = 'primary', busy, disabled }: { label: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'gold'; busy?: boolean; disabled?: boolean }) {
   const primary = kind === 'primary';
   return (
     <Pressable
@@ -124,7 +136,12 @@ export function Button({ label, onPress, kind = 'primary', busy, disabled }: { l
       accessibilityState={{ disabled: !!(busy || disabled), busy: !!busy }}
       aria-disabled={!!(busy || disabled)}
       aria-busy={!!busy}
-      style={({ pressed }) => [s.button, primary ? s.primary : s.secondary, (pressed || busy || disabled) && { opacity: 0.7 }]}>
+      style={({ pressed }) => [
+        s.button,
+        primary ? s.primary : kind === 'gold' ? s.gold : s.secondary,
+        pressed && { transform: [{ scale: 0.97 }] },
+        (pressed || busy || disabled) && { opacity: 0.75 },
+      ]}>
       {busy ? <ActivityIndicator color={primary ? '#fff' : colors.cardinal} /> : <Text style={[s.buttonText, { color: primary ? '#fff' : colors.ink }]}>{label}</Text>}
     </Pressable>
   );
@@ -164,6 +181,8 @@ export function ErrorNote({ message }: { message: string }) {
   );
 }
 
+const shadow = { shadowColor: '#7A0000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 } as const;
+
 export const s = StyleSheet.create({
   screen: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background, flexGrow: 1 },
   h1: { fontSize: fontSize.xxl, fontWeight: '700', color: colors.ink },
@@ -175,11 +194,17 @@ export const s = StyleSheet.create({
   badge: { alignSelf: 'flex-start', borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   badgeText: { color: '#fff', fontWeight: '700', fontSize: fontSize.xs },
   noPhoto: { backgroundColor: colors.line, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  row: { flexDirection: 'row', gap: spacing.md, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
-  card: { backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },
-  input: { minHeight: minTapTarget, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: spacing.md, fontSize: fontSize.md, color: colors.ink },
-  button: { minHeight: minTapTarget, borderRadius: radius.sm, paddingHorizontal: spacing.lg, alignItems: 'center', justifyContent: 'center' },
-  primary: { backgroundColor: colors.cardinal },
+  row: { flexDirection: 'row', gap: spacing.md, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', ...shadow },
+  card: { backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
+  input: { minHeight: minTapTarget + 4, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 2, borderRadius: radius.md, paddingHorizontal: spacing.md, fontSize: fontSize.md, color: colors.ink },
+  button: { minHeight: minTapTarget + 4, borderRadius: radius.pill, paddingHorizontal: spacing.lg, alignItems: 'center', justifyContent: 'center' },
+  primary: { backgroundColor: colors.cardinal, ...shadow },
+  gold: { backgroundColor: colors.gold, ...shadow },
+  hero: { backgroundColor: colors.cardinal, borderRadius: radius.lg + 4, padding: spacing.lg, gap: 2, borderBottomWidth: 4, borderBottomColor: colors.gold, ...shadow },
+  heroEyebrow: { color: colors.gold, fontWeight: '800', fontSize: fontSize.xs, letterSpacing: 2 },
+  heroTitle: { color: '#fff', fontWeight: '900', fontSize: fontSize.xxl },
+  heroSub: { color: 'rgba(255,255,255,0.85)', fontSize: fontSize.sm },
+  note: { backgroundColor: '#FFF7D6', borderColor: '#F2D46B', borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
   secondary: { backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1 },
   buttonText: { fontWeight: '700', fontSize: fontSize.md },
   dropoff: { backgroundColor: colors.surface, borderColor: colors.cardinal, borderWidth: 2, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },

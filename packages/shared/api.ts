@@ -29,6 +29,7 @@ import type {
   CreateEventResponse,
   CreateItemFields,
   CreateItemResponse,
+  DescribeItemResponse,
   DealSearchParams,
   DealSearchResponse,
   DealVoteResponse,
@@ -178,6 +179,7 @@ export function createApi(opts: ApiOptions) {
         multipart<CreateItemResponse>("/api/items", { ...fields }, { photo }),
       search: (params: ItemSearchParams) => request<ItemSearchResponse>("GET", "/api/items/search", undefined, { ...params }),
       searchByImage: (photo: UploadFile) => multipart<ItemSearchResponse>("/api/items/search-by-image", {}, { photo }),
+      describe: (photo: UploadFile) => multipart<DescribeItemResponse>("/api/items/describe", {}, { photo }),
       claim: (id: string) => request<ClaimItemResponse>("POST", `/api/items/${id}/claim`, {}),
     },
 

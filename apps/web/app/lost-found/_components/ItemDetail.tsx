@@ -85,15 +85,15 @@ export function ItemDetail() {
   const atDps = item.tier === "valuable";
 
   return (
-    <article className="space-y-5">
+    <div className="page-in space-y-5">
       {back}
       <div className="grid gap-6 md:grid-cols-2">
-        <ItemPhoto item={item} className="aspect-square w-full rounded-lg border border-line" />
+        <ItemPhoto item={item} className="aspect-square w-full rounded-3xl border border-line shadow-md" />
         <div className="space-y-4">
           <div className="space-y-2">
             <TierBadge tier={item.tier} />
-            <h1 className="text-3xl font-bold">{item.title}</h1>
-            {item.description && <p>{item.description}</p>}
+            <h1 className="text-3xl font-black tracking-tight">{item.title}</h1>
+            {item.description && <p className="border-l-4 border-gold pl-3 text-lg">{item.description}</p>}
             <p className="text-sm text-muted">Posted {timeAgo(item.created_at)}</p>
           </div>
 
@@ -102,7 +102,7 @@ export function ItemDetail() {
           {!open ? (
             <p className="rounded-md bg-success/10 p-3 font-semibold text-success">This post was taken down: the item was picked up or moved.</p>
           ) : mine ? (
-            <div className="space-y-4 rounded-lg border border-line bg-surface p-4">
+            <div className="space-y-4 rounded-2xl border border-line bg-surface p-4 shadow-sm">
               <p className="font-semibold">You posted this item.</p>
               {editing ? (
                 <EditItem
@@ -142,6 +142,6 @@ export function ItemDetail() {
           )}
         </div>
       </div>
-    </article>
+    </div>
   );
 }

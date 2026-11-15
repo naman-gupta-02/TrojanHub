@@ -307,6 +307,14 @@ export interface ItemSearchResponse {
   results: { item: Item; score: number }[]; // top 10, best first
 }
 
+/** POST /items/describe: the AI's first go at "What is it?" from the photo. The finder can edit it.
+ * source: "ai" = vision model, "label" = CLIP's label only, "none" = nothing (leave the box empty). */
+export interface DescribeItemResponse {
+  title: string | null;
+  description: string | null;
+  source: "ai" | "label" | "none";
+}
+
 /** Everyday items return a thread; valuables return where to pick it up instead. */
 export type ClaimItemResponse = { thread_id: UUID } | { pickup: DropoffInfo };
 
