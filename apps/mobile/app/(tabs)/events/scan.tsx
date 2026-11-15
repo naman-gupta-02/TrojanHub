@@ -6,7 +6,7 @@ import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 
 import { Button, CATEGORIES, Segmented, errorMessage, fromLocalInput, s, toLocalInput } from '@/components/events/kit';
 import { api } from '@/lib/api';
@@ -88,11 +88,17 @@ export default function ScanScreen() {
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
 
+  const [attempt, setAttempt] = useState(0); // "Try again" bumps it to reload the event
+
   useEffect(() => {
     if (!editId) return;
     let cancelled = false;
-    api.events
-      .get(editId)
+    setError(null);
+    // never sit on "Loading" forever: give up after 15 s and offer "Try again"
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Couldn't load your event. Check your connection and try again.")), 15_000),
+    );
+    Promise.race([api.events.get(editId), timeout])
       .then(({ event, can_edit }) => {
         if (cancelled) return;
         if (!can_edit) {
@@ -109,7 +115,7 @@ export default function ScanScreen() {
     return () => {
       cancelled = true;
     };
-  }, [editId]);
+  }, [editId, attempt]);
 
   // the server refuses past dates, so an already-over event can still get its typo fixed if the time stays the same
   const datesChanged = !original || form.starts_at !== original.starts_at || form.ends_at !== original.ends_at;
@@ -252,7 +258,7 @@ export default function ScanScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, title: editId ? 'Edit event' : 'Scan a flyer', presentation: 'modal' }} />
+      <Stack.Screen options={{ headerShown: true, title: editId ? 'Edit event' : 'Scan a flyer', presentation: editId ? 'card' : 'modal', headerBackTitle: 'Back' }} />
       <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
           {stage === 'pick' && (
@@ -288,10 +294,14 @@ export default function ScanScreen() {
                   <View style={s.errorBox} accessibilityRole="alert">
                     <Text style={{ color: colors.danger, fontWeight: '700' }}>{error}</Text>
                   </View>
+                  <Button title="Try again" onPress={() => setAttempt((n) => n + 1)} />
                   <Button title="Back" kind="secondary" onPress={() => router.back()} />
                 </>
               ) : (
-                <Text style={s.cardMeta}>Loading your event…</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                  <ActivityIndicator color={colors.cardinal} />
+                  <Text style={s.cardMeta}>Loading your event…</Text>
+                </View>
               )}
             </View>
           )}
