@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     real_features: str = ""
     embed_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     cors_origins: str = "http://localhost:3000,http://localhost:8081"
+    # Extra allowed origins as a regex, e.g. https://trojanhub.*\.vercel\.app for preview deploys.
+    # Local dev (localhost and LAN addresses) is always allowed.
+    cors_origin_regex: str = ""
 
     resend_api_key: str = ""
     cron_secret: str = ""

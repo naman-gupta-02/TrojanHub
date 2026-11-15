@@ -1,6 +1,8 @@
 "use client";
 // One chat bubble: text with [n] citations, tool status lines, source chips and confirm cards.
-import { parseAnswer, toolLabel, type ChatMsg } from "../_lib/chatState";
+import Link from "next/link";
+
+import { parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from "../_lib/chatState";
 import { ConfirmCardView } from "./ConfirmCard";
 
 type Props = {
@@ -77,7 +79,19 @@ export function Message({ msg, onConfirm }: Props) {
           </div>
         )}
 
-        {msg.error && <p className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{msg.error}</p>}
+        {msg.error && (
+          <p className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {msg.error}
+            {msg.error === SIGN_IN_TO_CHAT && (
+              <>
+                {" "}
+                <Link href="/login" className="font-semibold underline">
+                  Sign in
+                </Link>
+              </>
+            )}
+          </p>
+        )}
 
         {msg.sources.length > 0 && (
           <div className="flex flex-wrap gap-2" aria-label="Sources">

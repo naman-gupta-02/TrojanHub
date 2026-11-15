@@ -63,6 +63,20 @@ async def get_user_id(request: Request, authorization: str | None = Header(defau
     raise _unauthorized("Sign in with your @usc.edu email to do this.")
 
 
+async def require_signed_in(authorization: str | None = Header(default=None)) -> str:
+    """For anything that writes data (posting, voting, saving, checking in, scanning flyers).
+
+    Signed-out visitors can browse but not write. Only when Supabase isn't configured at all
+    (pure mock development) does it fall back to the demo user, so screens still work offline.
+    """
+    token = authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None
+    if not (settings.supabase_url and settings.supabase_anon_key):
+        return DEMO_USER_ID
+    if token:
+        return await _verify_with_supabase(token)
+    raise _unauthorized("Sign in with your @usc.edu email to post or save things.")
+
+
 async def require_admin(user_id: str = Depends(get_user_id)) -> str:
     """dept_admin / usg_admin only. Skipped while the admin feature is mocked.
 

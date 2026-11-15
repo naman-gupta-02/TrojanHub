@@ -139,6 +139,16 @@ export function parseAnswer(raw: string): Piece[] {
   return pieces;
 }
 
+export const SIGN_IN_TO_CHAT = "Sign in with your @usc.edu email to chat with Tommy.";
+
+/** What to tell the student when a chat request fails. */
+export function chatErrorMessage(e: unknown, offlineHint: string): string {
+  const status = (e as { status?: number } | null)?.status;
+  if (status === 401) return SIGN_IN_TO_CHAT;
+  if (status === 429) return "Tommy is busy right now. Please try again in a minute.";
+  return offlineHint;
+}
+
 export function newSessionId(): string {
   const g = globalThis as { crypto?: { randomUUID?: () => string } };
   return g.crypto?.randomUUID?.() ?? `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;

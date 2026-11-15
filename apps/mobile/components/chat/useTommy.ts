@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { api } from '@/lib/api';
 
-import { applyEvent, assistantPlaceholder, newSessionId, updateConfirm, userMessage, type ChatMsg } from './chatState';
+import { applyEvent, assistantPlaceholder, chatErrorMessage, newSessionId, updateConfirm, userMessage, type ChatMsg } from './chatState';
 
 export type Photo = { url: string; previewUri: string };
 
@@ -38,7 +38,7 @@ export function useTommy() {
         const aborted = abort.current?.signal.aborted || (e instanceof Error && e.name === 'AbortError');
         patch(reply.id, (m) => ({
           ...m,
-          error: aborted ? undefined : "I couldn't reach the TrojanHub server. Is the AI service running on the same Wi-Fi?",
+          error: aborted ? undefined : chatErrorMessage(e, "I couldn't reach the TrojanHub server. Is the AI service running on the same Wi-Fi?"),
         }));
       } finally {
         patch(reply.id, (m) => ({ ...m, streaming: false, tools: m.tools.map((t) => ({ ...t, done: true })) }));

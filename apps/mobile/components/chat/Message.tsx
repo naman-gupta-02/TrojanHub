@@ -2,7 +2,9 @@
 import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { parseAnswer, toolLabel, type ChatMsg } from './chatState';
+import { router } from 'expo-router';
+
+import { parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from './chatState';
 import { ConfirmCardView } from './ConfirmCard';
 
 type Props = {
@@ -57,7 +59,14 @@ export function Message({ msg, onConfirm }: Props) {
         </View>
       )}
 
-      {!!msg.error && <Text style={styles.error}>{msg.error}</Text>}
+      {!!msg.error && (
+        <Text style={styles.error}>
+          {msg.error}
+          {msg.error === SIGN_IN_TO_CHAT && (
+            <Text style={styles.link} onPress={() => router.push('/auth/login')}> Sign in</Text>
+          )}
+        </Text>
+      )}
 
       {msg.sources.length > 0 && (
         <View style={styles.chips} accessibilityLabel="Sources">

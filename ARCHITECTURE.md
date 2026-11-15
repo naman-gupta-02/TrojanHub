@@ -565,8 +565,10 @@ OpenAI-compatible `/v1/chat/completions` and answers each request by running the
 - **The AI service runs on Naman's laptop** (the shim is local). Phones and the web app reach it
   over the same Wi-Fi at `http://<naman-laptop-ip>:8000` → set `EXPO_PUBLIC_API_URL` /
   `NEXT_PUBLIC_API_URL`.
-- **Never expose the shim publicly** (no ngrok or tunnels to it). It's Naman's personal account,
-  and it binds to 127.0.0.1 only.
+- **Never expose the shim itself publicly** (no ngrok or tunnels to it). It binds to 127.0.0.1 only.
+- **Hosted on Replit (Naman's decision, 2026-11-14):** the Replit app runs the shim internally with
+  Naman's login from the `CODEX_AUTH_JSON` secret, so the hosted Tommy uses his ChatGPT Edu quota.
+  See DEPLOY.md for the costs and how to limit Tommy to signed-in students.
 - **Text embeddings stay local** (MiniLM) and **CLIP stays local**. Neither goes through
   ChatGPT Edu.
 - **Replit copy:** Jaymin also deploys the same FastAPI on Replit with the **backup API key**.

@@ -81,3 +81,10 @@ def test_tommy_asks_signed_out_student_to_sign_in(anon, monkeypatch, llm):
     assert not any(e["type"] == "confirm" for e in events)
     result = next(e for e in events if e["type"] == "tool_result")["result"]
     assert result["status"] == 401 and "sign in" in result["note"]
+
+
+def test_chat_can_be_limited_to_signed_in_students(anon, monkeypatch):
+    monkeypatch.setattr(settings, "real_features", "complaints,admin,chat")
+    r = anon.post("/api/chat", json={"session_id": "x", "message": "hi"})
+    assert r.status_code == 401
+    assert anon.get("/api/events/search").status_code == 200  # browsing still open

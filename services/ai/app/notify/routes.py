@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from app.core.auth import get_user_id, require_admin, require_cron_secret
+from app.core.auth import get_user_id, require_admin, require_cron_secret, require_signed_in
 from app.events import store
 from app.events.settings import db_live, p3
 from app.notify import digest, reminders, scheduler
@@ -64,7 +64,7 @@ def get_notify_prefs(user_id: str = Depends(get_user_id)) -> dict:
 
 
 @router.patch("/me/notify")
-def patch_notify_prefs(req: NotifyPrefsPatch, user_id: str = Depends(get_user_id)) -> dict:
+def patch_notify_prefs(req: NotifyPrefsPatch, user_id: str = Depends(require_signed_in)) -> dict:
     changes = req.model_dump(exclude_none=True)
     if not db_live():
         return {**DEFAULT_PREFS, **changes}
