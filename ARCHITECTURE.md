@@ -263,6 +263,7 @@ real endpoint exists.
 | POST | `/items` | multipart `{photo, kind, description?, building_id?, location_text?}` → `{item, tier, dropoff?: {name, url, map}}` |
 | GET | `/items/search` | `?q=black hydro flask&building_id=` → `{results:[{item, score}]}` (top 10) |
 | POST | `/items/search-by-image` | multipart `{photo}` → same as above |
+| POST | `/items/describe` | multipart `{photo}` → `{title, description, source: "ai"\|"label"\|"none"}` (pre-fills "What is it?"; the finder can edit it) |
 | POST | `/items/{id}/claim` | `{}` → `{thread_id}` (everyday only; valuables return the DPS/IT pickup info instead) |
 
 ### P3 — Events, Deals, Freebies, Notifications

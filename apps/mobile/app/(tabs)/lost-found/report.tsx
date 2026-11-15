@@ -4,10 +4,10 @@ import type { Building, CreateItemResponse, Item, ItemTier } from '@trojanhub/sh
 import { ApiRequestError } from '@trojanhub/shared/api';
 import { colors, radius, spacing } from '@trojanhub/shared/theme';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { DPS_DROPOFF, type PickedPhoto, currentUserId, getBuildings, isMock, pickPhoto, postFoundItem, setTier } from '@/components/lost-found/data';
+import { DPS_DROPOFF, type PickedPhoto, currentUserId, describePhoto, getBuildings, isMock, pickPhoto, postFoundItem, setTier } from '@/components/lost-found/data';
 import { EditItem } from '@/components/lost-found/EditItem';
 import { Button, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice, s } from '@/components/lost-found/ui';
 
@@ -15,6 +15,11 @@ export default function ReportFoundScreen() {
   const [signedIn, setSignedIn] = useState<boolean | null>(isMock ? true : null);
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
   const [description, setDescription] = useState('');
+  const [describing, setDescribing] = useState(false);
+  const [aiWrote, setAiWrote] = useState(false); // the box holds Tommy's text (maybe edited)
+  const lastAi = useRef<string | null>(null);
+  const typed = useRef(''); // what's in the box right now, for the async describe below
+  const describeRun = useRef(0); // ignore an answer for a photo that was already replaced
   const [where, setWhere] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,9 +33,32 @@ export default function ReportFoundScreen() {
     setError(null);
     try {
       const p = await pickPhoto(source);
-      if (p) setPhoto(p);
+      if (p) {
+        setPhoto(p);
+        void autoDescribe(p);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Tommy writes "What is it?" from the photo. It never overwrites what the finder typed;
+   *  if it fails, the box just stays as it was. */
+  async function autoDescribe(p: PickedPhoto, force = false) {
+    const run = ++describeRun.current;
+    setDescribing(true);
+    try {
+      const res = await describePhoto(p.file);
+      if (run !== describeRun.current || !res.description) return;
+      const cur = typed.current;
+      if (!force && cur.trim() && cur !== lastAi.current) return; // the finder already wrote their own
+      lastAi.current = typed.current = res.description;
+      setDescription(res.description);
+      setAiWrote(true);
+    } catch {
+      // optional helper: the finder can still type it
+    } finally {
+      if (run === describeRun.current) setDescribing(false);
     }
   }
 
@@ -80,16 +108,30 @@ export default function ReportFoundScreen() {
         </View>
 
         <Text style={s.title}>
-          What is it? <Text style={s.small}>(optional with a photo)</Text>
+          What is it? <Text style={s.small}>{photo ? '(Tommy writes this from your photo)' : '(optional with a photo)'}</Text>
         </Text>
         <TextInput
           value={description}
-          onChangeText={setDescription}
-          placeholder="e.g. black Hydro Flask with a Trojans sticker"
+          onChangeText={(v) => {
+            typed.current = v;
+            setDescription(v);
+          }}
+          multiline
+          placeholder={describing ? 'Tommy is looking at your photo…' : 'e.g. black Hydro Flask with a Trojans sticker'}
           placeholderTextColor={colors.muted}
           accessibilityLabel="What is it?"
-          style={s.input}
+          style={[s.input, { minHeight: 76, paddingTop: spacing.sm, textAlignVertical: 'top', opacity: describing ? 0.6 : 1 }]}
         />
+        {describing ? (
+          <Text style={s.small} accessibilityLiveRegion="polite">✨ Tommy is describing your photo…</Text>
+        ) : aiWrote && photo && description.trim() ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.sm }}>
+            <Text style={s.small}>✨ Written by Tommy. Check it and fix anything that’s wrong.</Text>
+            <Pressable onPress={() => autoDescribe(photo, true)} accessibilityRole="button" hitSlop={10}>
+              <Text style={[s.small, { color: colors.cardinal, fontWeight: '700', textDecorationLine: 'underline' }]}>Rewrite</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Text style={s.title}>
           Where did you find it? <Text style={s.small}>(be specific: if you leave it there, owners will go to this spot)</Text>
         </Text>

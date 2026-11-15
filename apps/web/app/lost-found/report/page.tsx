@@ -16,6 +16,11 @@ export default function ReportFoundPage() {
   const [signedIn, setSignedIn] = useState<boolean | null>(isMock ? true : null);
   const [photo, setPhoto] = useState<{ blob: Blob; preview: string } | null>(null);
   const [description, setDescription] = useState("");
+  const [describing, setDescribing] = useState(false);
+  const [aiWrote, setAiWrote] = useState(false); // the box holds Tommy's text (maybe edited)
+  const lastAi = useRef<string | null>(null);
+  const typed = useRef(""); // what's in the box right now, for the async describe below
+  const describeRun = useRef(0); // ignore an answer for a photo that was already replaced
   const [where, setWhere] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +43,12 @@ export default function ReportFoundPage() {
         return null;
       });
       setDescription("");
+      typed.current = "";
+      setAiWrote(false);
+      lastAi.current = null;
+      // a counter, not a DOM ref: bumping it makes a describe that's still running drop its answer
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      describeRun.current++;
       setWhere("");
       setError(null);
     };
@@ -50,8 +61,29 @@ export default function ReportFoundPage() {
       const blob = await shrinkPhoto(file);
       if (photo) URL.revokeObjectURL(photo.preview);
       setPhoto({ blob, preview: URL.createObjectURL(blob) });
+      void autoDescribe(blob);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Tommy writes "What is it?" from the photo. It never overwrites what the finder typed;
+   *  if it fails, the box just stays as it was. */
+  async function autoDescribe(blob: Blob, force = false) {
+    const run = ++describeRun.current;
+    setDescribing(true);
+    try {
+      const res = await api.items.describe(blob);
+      if (run !== describeRun.current || !res.description) return;
+      const cur = typed.current;
+      if (!force && cur.trim() && cur !== lastAi.current) return; // the finder already wrote their own
+      lastAi.current = typed.current = res.description;
+      setDescription(res.description);
+      setAiWrote(true);
+    } catch {
+      // optional helper: the finder can still type it
+    } finally {
+      if (run === describeRun.current) setDescribing(false);
     }
   }
 
@@ -118,15 +150,32 @@ export default function ReportFoundPage() {
           <input ref={fileInput} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Photo of the item" onChange={(e) => pickPhoto(e.target.files?.[0])} />
         </div>
 
-        <label className="block space-y-1">
-          <span className="font-semibold">What is it?</span> <span className="text-sm text-muted">(optional with a photo)</span>
-          <input
+        <div className="space-y-1">
+          <label htmlFor="item-description" className="font-semibold">What is it?</label>{" "}
+          <span className="text-sm text-muted">{photo ? "(Tommy writes this from your photo)" : "(optional with a photo)"}</span>
+          <textarea
+            id="item-description"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. black Hydro Flask with a Trojans sticker"
-            className="min-h-11 w-full rounded-md border border-line bg-surface px-3"
+            onChange={(e) => {
+              typed.current = e.target.value;
+              setDescription(e.target.value);
+            }}
+            rows={3}
+            placeholder={describing ? "Tommy is looking at your photo…" : "e.g. black Hydro Flask with a Trojans sticker"}
+            aria-busy={describing}
+            className={`w-full rounded-md border border-line bg-surface px-3 py-2 ${describing ? "animate-pulse" : ""}`}
           />
-        </label>
+          {describing ? (
+            <p className="text-sm text-muted" role="status">✨ Tommy is describing your photo…</p>
+          ) : aiWrote && photo && description.trim() ? (
+            <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted" role="status">
+              <span>✨ Written by Tommy. Check it and fix anything that&apos;s wrong.</span>
+              <button type="button" onClick={() => autoDescribe(photo.blob, true)} className="font-semibold text-cardinal underline">
+                Rewrite
+              </button>
+            </p>
+          ) : null}
+        </div>
 
         <label className="block space-y-1">
           <span className="font-semibold">Where did you find it?</span>{" "}

@@ -3,6 +3,7 @@
 POST /items                    multipart {photo, kind, description?, building_id?, location_text?}
 GET  /items/search             ?q=&building_id=
 POST /items/search-by-image    multipart {photo}
+POST /items/describe           multipart {photo} -> {title, description, source} (pre-fills the report form)
 POST /items/{id}/claim
 PATCH /items/{id}                multipart {description?, location_text?, photo?, remove_photo?} (finder only)
 
@@ -22,7 +23,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.auth import get_user_id, require_signed_in
 from app.core.config import settings
 from app.core.mocks import load_mock
-from app.lostfound import claim, items, search, warmup
+from app.lostfound import claim, describe, items, search, warmup
 
 router = APIRouter(tags=["lost & found (P2)"])
 warmup.start()  # real mode: load CLIP + the sentence model now, not on the first request
@@ -58,6 +59,17 @@ async def create_item(
         )
     except items.ItemError as e:
         raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
+
+
+@router.post("/items/describe")
+async def describe_item(photo: UploadFile = File(...), user_id: str = Depends(require_signed_in)) -> dict:
+    """Photo -> {title, description, source}: the report form pre-fills "What is it?" with it."""
+    photo_bytes = await photo.read()
+    if not photo_bytes:
+        raise HTTPException(422, detail={"code": "no_photo", "message": "Add a photo first."})
+    if len(photo_bytes) > describe.MAX_PHOTO_BYTES:
+        raise HTTPException(413, detail={"code": "photo_too_large", "message": "Photo must be under 8 MB."})
+    return await run_in_threadpool(describe.describe, photo_bytes)
 
 
 @router.get("/items/search")

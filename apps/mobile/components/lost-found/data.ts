@@ -62,6 +62,9 @@ export async function pickPhoto(source: 'camera' | 'library'): Promise<PickedPho
 export const postFoundItem = (fields: { description?: string; location_text: string }, photo?: UploadFile) =>
   uploadApi.items.create({ kind: 'found', ...fields }, photo);
 
+/** Tommy's first go at "What is it?" from the photo (POST /api/items/describe). */
+export const describePhoto = (photo: UploadFile) => uploadApi.items.describe(photo);
+
 export const searchByPhoto = (photo: UploadFile): Promise<ItemSearchResponse> => uploadApi.items.searchByImage(photo);
 
 // ---------------------------------------------------------------------------
