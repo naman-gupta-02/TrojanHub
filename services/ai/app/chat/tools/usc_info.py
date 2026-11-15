@@ -15,7 +15,10 @@ async def search_usc_info(args: dict, ctx: ToolContext) -> ToolOutcome:
         return ToolOutcome({"no_answer": True, "closest": closest})
 
     out = []
+    already = {src["snippet"] for src in ctx.sources}
     for s in r.sources:
+        if s.content in already:  # a second search this turn found the same chunk
+            continue
         n = len(ctx.sources) + 1  # numbering continues across several searches in one turn
         # Chip label: page title, plus the section when there is one (two chunks of one page differ)
         section = (s.section or "").split(" > ")[-1]
@@ -23,4 +26,6 @@ async def search_usc_info(args: dict, ctx: ToolContext) -> ToolOutcome:
         ctx.sources.append({"n": n, "title": label, "url": s.url, "snippet": s.content})
         ctx.known_text.append(s.content)
         out.append({"n": n, "title": s.title, "url": s.url, "section": s.section, "content": s.content, "contacts": s.contacts})
+    if not out:
+        return ToolOutcome({"sources": [], "note": "Same pages as the search above."})
     return ToolOutcome({"sources": out})

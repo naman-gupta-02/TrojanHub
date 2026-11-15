@@ -38,6 +38,51 @@ _ACTION = re.compile(r"\b(free|freebie|freebies|event|events|deal|deals|lost|fou
 
 def should_prefetch(message: str, has_photo: bool) -> bool:
     return not has_photo and bool(_QUESTION.search(message)) and not _ACTION.search(message)
+
+
+def prefetch_queries(message: str, history: list[dict], has_photo: bool) -> list[str]:
+    """What to search before the first LLM call (empty list = let the model decide).
+
+    - A plain campus question -> the question itself.
+    - A short question mid-chat ("what is the advisor's email?") -> the question alone AND the
+      question with the student's previous message. The model gets both result sets, so a new
+      topic ("when is the pantry open?") still finds its own pages and a follow-up finds the
+      ones that match what the student said before.
+    - The student answering Tommy's follow-up ("I'm an MS CS student in Viterbi") -> their
+      earlier question + the new details.
+    """
+    if has_photo:
+        return []
+    last_user = next((m["content"] for m in reversed(history) if m["role"] == "user"), None)
+    if should_prefetch(message, False):
+        if last_user and len(message.split()) <= SHORT_QUESTION_WORDS:
+            # the student's latest message usually says who they are / what they mean
+            return [message, f"{message} {last_user[:300]}"]
+        return [message]
+    last_bot = next((m["content"] for m in reversed(history) if m["role"] == "assistant"), "")
+    asked_back = "?" in _strip_sources(last_bot)[-200:]
+    if last_user and asked_back and should_prefetch(last_user, False) and not _ACTION.search(message):
+        return [f"{last_user} {message}"]
+    return []
+
+
+SHORT_QUESTION_WORDS = 7
+_SOURCES_NOTE = "\n\n(Sources used: "  # added by the app to history only; the model is told not to write it
+
+
+_COPIED_NOTE = re.compile(r"\s*\(Sources used:[^)]*\)\s*$")
+
+
+def _strip_sources(text: str) -> str:
+    """Remove the app's history note, and any copy of it the model wrote at the end."""
+    return _COPIED_NOTE.sub("", text.split(_SOURCES_NOTE)[0])
+
+
+def _with_sources(answer: str, cited: list[dict]) -> str:
+    """Answer as kept in chat history: with the pages it used, so follow-ups can refer back."""
+    if not cited:
+        return answer
+    return answer + _SOURCES_NOTE + "; ".join(f"{s['title']} <{s['url']}>" for s in cited) + ")"
 SORRY = "Sorry, I'm having trouble thinking right now. Please try again in a moment."
 # Said after a confirm card instead of a second LLM call (saves one slow round trip).
 CONFIRM_LINE = "I drafted that for you. Check the card below, then tap Confirm to send it, or Edit to change something."
@@ -119,7 +164,9 @@ async def run_turn(
                 answer += ev["text"]
                 await asyncio.sleep(0.01)  # keep the typing effect
             yield ev
-        store.remember(session_id, {"role": "user", "content": user_text}, {"role": "assistant", "content": answer})
+        cached_sources = next((ev["sources"] for ev in cached if ev["type"] == "sources"), [])
+        store.remember(session_id, {"role": "user", "content": user_text},
+                       {"role": "assistant", "content": _with_sources(answer, cached_sources)})
         yield {"type": "done", "session_id": session_id}
         return
 
@@ -130,16 +177,16 @@ async def run_turn(
         recorded.append(ev)
         return ev
 
-    # Pre-fetch USC sources for plain questions (see should_prefetch).
-    if should_prefetch(message, bool(image_url)):
+    # Pre-fetch USC sources for plain questions and follow-ups (see prefetch_queries).
+    for i, query in enumerate(prefetch_queries(message, store.history(session_id), bool(image_url)), 1):
         try:
-            pre = await search_usc_info({"query": message}, ctx)
+            pre = await search_usc_info({"query": query}, ctx)
         except Exception:  # noqa: BLE001 - no index yet, etc.: the model can still search itself
             log.exception("prefetch failed")
             pre = None
         if pre and pre.result.get("sources"):
-            call = {"id": "prefetch_1", "name": "search_usc_info", "arguments": json.dumps({"query": message})}
-            yield out({"type": "tool_call", "id": call["id"], "name": call["name"], "arguments": {"query": message}})
+            call = {"id": f"prefetch_{i}", "name": "search_usc_info", "arguments": json.dumps({"query": query})}
+            yield out({"type": "tool_call", "id": call["id"], "name": call["name"], "arguments": {"query": query}})
             yield out({"type": "tool_result", "id": call["id"], "name": call["name"], "result": pre.result})
             messages.append({"role": "assistant", "content": None, "tool_calls": [
                 {"id": call["id"], "type": "function", "function": {"name": call["name"], "arguments": call["arguments"]}}]})
@@ -198,12 +245,13 @@ async def run_turn(
         answer += note
         yield out({"type": "token", "text": note})
 
+    answer = _strip_sources(answer)  # in case the model copied the history note
     cited = _cited(answer, ctx.sources) if ctx.sources else []
     if cited:
         yield out({"type": "sources", "sources": cited})
     if cacheable and key and answer.strip():
         store.cache_put(key, recorded)
-    store.remember(session_id, {"role": "user", "content": user_text}, {"role": "assistant", "content": answer})
+    store.remember(session_id, {"role": "user", "content": user_text}, {"role": "assistant", "content": _with_sources(answer, cited)})
     _background(asyncio.to_thread(store.persist_turn, session_id, user_id, user_text, answer, cited))
     yield {"type": "done", "session_id": session_id}
 

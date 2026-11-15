@@ -44,6 +44,9 @@ def local_only(monkeypatch):
         ("will my community college classes transfer to USC?", "articulation"),
         ("how is my Dornsife advisor assigned", "declared major"),
         ("who is my academic advisor in Viterbi", "academic advisor"),
+        ("what is the email for the computer science MS advisors?", "viterbiservicedesk.cscimasters@usc.edu"),
+        ("can I take a non-CS course for my MS in computer science?", "non-CS"),
+        ("how many graduate units can I transfer into the CS masters?", "8 graduate units"),
     ],
 )
 def test_fact_is_in_sources(question, fact):

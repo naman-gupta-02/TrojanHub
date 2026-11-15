@@ -120,7 +120,9 @@ export function editableFields(card: { tool: string; draft: Record<string, unkno
 /** Split answer text into plain text and [n] citation markers. */
 export type Piece = { kind: "text"; text: string } | { kind: "cite"; n: number } | { kind: "bold"; text: string } | { kind: "link"; text: string; url: string };
 
-export function parseAnswer(text: string): Piece[] {
+export function parseAnswer(raw: string): Piece[] {
+  // The app keeps "(Sources used: …)" in chat history for Tommy; if the model ever copies it, hide it.
+  const text = raw.replace(/\s*\(Sources used:[^)]*\)\s*$/, "");
   const pieces: Piece[] = [];
   const re = /\[(\d+)\]|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)]+[^\s).,])/g;
   let last = 0;

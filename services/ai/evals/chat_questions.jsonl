@@ -19,6 +19,10 @@
 {"id": "stars_where", "question": "where do I see my STARS report?", "expected_url": "https://arr.usc.edu/stars-report/", "expected_facts": ["Experience USC"]}
 {"id": "dornsife_advisor", "question": "how is my Dornsife advisor assigned after freshman year?", "expected_url": "https://dornsife.usc.edu/advising/departmental-advising/", "expected_facts": ["declared major"]}
 {"id": "transfer_cc", "question": "will my community college classes transfer to USC?", "expected_url": "https://arr.usc.edu/transfer-credit-services/", "expected_facts": ["articulation"], "followup_ok": true}
+{"id": "ms_cs_email", "question": "what is the email for the computer science MS advisors?", "expected_url": "https://www.cs.usc.edu/students/academic-advisement/", "expected_contacts": ["viterbiservicedesk.cscimasters@usc.edu"]}
+{"id": "ms_cs_noncs", "question": "can I take a non-CS course for my MS in computer science?", "expected_url": "https://www.cs.usc.edu/students/ms-students/approved-non-cs-courses/", "expected_facts": ["EE"]}
+{"id": "ms_cs_transfer", "question": "how many graduate units can I transfer into the CS masters?", "expected_url": "https://www.cs.usc.edu/students/ms-students/academic-faqs/", "expected_facts": ["8"]}
+{"id": "annenberg_advising", "question": "where do Annenberg students get academic advising?", "expected_url": "https://annenberg.usc.edu/current-students/advisement-and-academic-services"}
 {"id": "no_answer_1", "question": "what is the wifi password for the football stadium?", "expected_url": null}
 {"id": "no_answer_2", "question": "who won the super bowl last year?", "expected_url": null}
 {"id": "no_answer_3", "question": "what's the best pizza place in Koreatown?", "expected_url": null}

@@ -1,5 +1,5 @@
 # Hand-picked public USC pages for Tommy's RAG index (ARCHITECTURE.md §7.1).
-# Every URL here returned HTTP 200 when checked on 2026-11-14 (65 pages).
+# Every URL here returned HTTP 200 when checked on 2026-11-14 (86 pages).
 # Topics are used for filtering and debugging. Add pages through a PR to p1/chatbot.
 
 pages:
@@ -81,6 +81,33 @@ pages:
   - {url: "https://dornsife.usc.edu/advising/what-is-academic-advising2/", topic: advising}
   - {url: "https://viterbiundergrad.usc.edu/", topic: advising}
   - {url: "https://viterbiundergrad.usc.edu/viterbi-undergraduate-advising/", topic: advising}
+
+  # --- Department advising: Thomas Lord Dept. of Computer Science (added 2026-11-14) ---
+  - {url: "https://www.cs.usc.edu/students/academic-advisement/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/d-clearance/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/academic-faqs/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/general-faqs/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/approved-non-cs-courses/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/approved-400-level-courses/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/prerequisite-information/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/academic-programs/masters/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/bs-students/technical-electives/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/bs-students/registration-advisement/", topic: advising_cs}
+
+  # --- Advising / student services in other schools (added 2026-11-14). Not reachable for the
+  #     crawler (built in the browser or not linked): Marshall, Thornton, Cinematic Arts,
+  #     Iovine and Young. ---
+  - {url: "https://annenberg.usc.edu/current-students/advisement-and-academic-services", topic: advising}
+  - {url: "https://minghsiehece.usc.edu/students/student-services-faqs/", topic: advising}
+  - {url: "https://ise.usc.edu/current-students/", topic: advising}
+  - {url: "https://ise.usc.edu/current-students/faqs/", topic: advising}
+  - {url: "https://priceschool.usc.edu/students/undergraduate-advisement/", topic: advising}
+  - {url: "https://roski.usc.edu/advisement-for-spring-2027/", topic: advising}
+  - {url: "https://kaufman.usc.edu/student-affairs/", topic: advising}
+  - {url: "https://gould.usc.edu/students/academic-services-honors-programs/", topic: advising}
+  - {url: "https://dramaticarts.usc.edu/know-your-resources-advising/", topic: advising}
+  - {url: "https://dramaticarts.usc.edu/know-your-resources-student-services/", topic: advising}
 
   # --- Student life / other offices ---
   - {url: "https://studentlife.usc.edu/", topic: student_life}

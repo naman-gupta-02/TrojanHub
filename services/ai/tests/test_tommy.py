@@ -334,3 +334,72 @@ def test_chips_show_only_pages_the_answer_used():
     assert agent._cited("See [the page](https://c.usc.edu/) for details.", sources) == [sources[2]]
     assert agent._cited("I couldn't find that on USC's pages.", sources) == []  # no unrelated chips
     assert agent._cited("Both [1][1] and [2].", sources) == sources[:2]
+
+
+# ---------------------------------------------------------------------------
+# Follow-ups: the student answers Tommy's question with details
+# ---------------------------------------------------------------------------
+def test_prefetch_query_combines_question_and_details():
+    history = [
+        {"role": "user", "content": "does this course count towards my graduation?"},
+        {"role": "assistant", "content": "Check your STARS report [1]. Which school are you in?"},
+    ]
+    q = agent.prefetch_queries("I'm an MS CS student in Viterbi", history, has_photo=False)
+    assert q == ["does this course count towards my graduation? I'm an MS CS student in Viterbi"]
+    assert agent.prefetch_queries("thanks!", [], has_photo=False) == []  # no question, no follow-up
+    no_followup = [history[0], {"role": "assistant", "content": "Check your STARS report [1]."}]
+    assert agent.prefetch_queries("I'm in Viterbi", no_followup, has_photo=False) == []
+
+
+@needs_index
+def test_follow_up_searches_again_with_both(client, llm):
+    fake = llm(text_step("Check your STARS report [1]. Which school or major are you in?"),
+               text_step("The CS M.S. Academic FAQs cover this; check your STARS report [2]."),
+               text_step("Email the CS M.S. advisors at viterbiservicedesk.cscimasters@usc.edu [1]."))
+    chat(client, "who do I contact to check if a course counts towards my degree?", session="fu1")
+    events = chat(client, "I am a masters student in computer science in Viterbi", session="fu1")
+    call = next(e for e in events if e["type"] == "tool_call")
+    assert call["name"] == "search_usc_info"
+    assert "counts towards my degree" in call["arguments"]["query"] and "computer science" in call["arguments"]["query"]
+    urls = [s["url"] for s in next(e for e in events if e["type"] == "sources")["sources"]]
+    assert any("cs.usc.edu/students/ms-students" in u for u in urls)  # the department's MS pages
+
+    # a short question next ("what is the advisors email?") still knows it's about MS CS
+    events = chat(client, "what is the advisors email?", session="fu1")
+    queries = [e["arguments"]["query"] for e in events if e["type"] == "tool_call"]
+    assert queries[0] == "what is the advisors email?" and "computer science" in queries[1]
+    seen = " ".join(str(e["result"]) for e in events if e["type"] == "tool_result")
+    assert "viterbiservicedesk.cscimasters@usc.edu" in seen  # the CS advisement page was found
+    assert "couldn't verify" not in answer_of(events)
+    # history keeps which pages earlier answers used
+    first_answer = next(m for m in fake.calls[2]["messages"] if m["role"] == "assistant" and m["content"])
+    assert "(Sources used: " in first_answer["content"] and "https://" in first_answer["content"]
+
+
+def test_short_question_mid_chat_searches_alone_and_with_context():
+    history = [{"role": "user", "content": "I am an MS CS student in Viterbi"}, {"role": "assistant", "content": "Got it."}]
+    assert agent.prefetch_queries("what is the advisors email?", history, False) == [
+        "what is the advisors email?", "what is the advisors email? I am an MS CS student in Viterbi"]
+    long_q = "when is the Trojan Food Pantry open this week and where is it?"
+    assert agent.prefetch_queries(long_q, history, False) == [long_q]
+    assert agent.prefetch_queries("what is the advisors email?", [], False) == ["what is the advisors email?"]
+
+
+@needs_index
+def test_new_topic_mid_chat_still_finds_its_own_page(client, llm):
+    llm(text_step("Check your STARS report [1]. Which school or major are you in?"),
+        text_step("CS M.S. FAQs [2]."), text_step("Tuesdays to Thursdays, 10 AM to 2 PM [1]."))
+    chat(client, "does a course count towards my graduation?", session="tc1")
+    chat(client, "I'm an MS CS student in Viterbi", session="tc1")
+    events = chat(client, "when is the pantry open?", session="tc1")
+    first = next(e for e in events if e["type"] == "tool_result")["result"]["sources"]
+    assert "trojan-food-pantry" in first[0]["url"]
+
+
+@needs_index
+def test_copied_sources_note_is_not_kept(client, llm):
+    llm(text_step("Open Tue-Thu 10 AM-2 PM [1]. (Sources used: 1, 4)"))
+    chat(client, "when is the food pantry open?", session="sn1")
+    kept = [m for m in store.history("sn1") if m["role"] == "assistant"][0]["content"]
+    assert kept.count("(Sources used: ") == 1  # only the app's own note, not the model's copy
+    assert "1, 4)" not in kept
