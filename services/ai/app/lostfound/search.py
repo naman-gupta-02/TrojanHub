@@ -14,7 +14,8 @@ Filler ("lost my", "anyone find", "at Leavey") is stripped first; the building, 
 ("leavy"), counts through the building bonus instead.
 If the sentence model can't load, CLIP compares the words with the description instead.
 
-Photo search compares the photos (and descriptions for items without one) with CLIP.
+Photo search compares the photos (and descriptions for items without one) with CLIP, plus a boost
+for found items of the same kind as the uploaded photo (a folded umbrella still finds an open one).
 Only open, unexpired found items are searched, including items posted without a photo. Top 10.
 Items at DPS come back without photo/description for everyone but the finder (items.item_for).
 The `match_items` SQL function skips items without a photo and doesn't check expiry, so this ranks
@@ -30,12 +31,14 @@ from datetime import datetime, timezone
 import numpy as np
 
 from app.core.supabase import get_supabase
-from app.lostfound import clip, semantic
+from app.lostfound import clip, semantic, tiers
 from app.lostfound.items import MAX_UPLOAD_BYTES, ItemError, _buildings, item_for, match_building, similar_word
 
 TOP_K = 10
 MIN_SCORE = 0.3  # below this it's almost surely a different item; "no match" beats a wrong one
 BUILDING_BONUS = 0.1
+SAME_KIND_BONUS = 0.3  # photo search: found item is the same kind as the uploaded photo
+SAME_KIND_MIN_PROB = 0.5  # ...when the AI is at least this sure what the photo shows
 
 # Typed search, with the sentence model
 W_PHOTO, W_MEANING, W_KEYWORDS = 0.60, 0.25, 0.15  # item with a photo
@@ -150,7 +153,16 @@ def _rank_words(
     return _results(scored, building_id, viewer_id)
 
 
+def _photo_kind(query: np.ndarray) -> str | None:
+    """What kind of item the uploaded photo shows ("Umbrella"), if the AI is reasonably sure."""
+    kind, prob = tiers.classify_vector(query).top[0]
+    return kind if prob >= SAME_KIND_MIN_PROB else None
+
+
 def _rank_photo(query: np.ndarray, viewer_id: str | None) -> dict:
+    # Photos of the same object match on looks; a different-looking one of the same kind (a folded
+    # umbrella vs an open one) still gets a boost from the item's AI title.
+    kind = _photo_kind(query)
     scored = []
     for row in _open_found_items():
         img, txt = _vec(row.get("img_embedding")), _vec(row.get("text_embedding"))
@@ -158,7 +170,10 @@ def _rank_photo(query: np.ndarray, viewer_id: str | None) -> dict:
         t = _scaled("photo>desc", float(query @ txt)) if txt is not None else None
         if p is None and t is None:
             continue
-        scored.append((FB_PHOTO * p + FB_DESC * (t or 0.0) if p is not None else t, row))
+        score = FB_PHOTO * p + FB_DESC * (t or 0.0) if p is not None else t
+        if kind and row.get("title") == kind:
+            score += SAME_KIND_BONUS
+        scored.append((score, row))
     return _results(scored, None, viewer_id)
 
 
