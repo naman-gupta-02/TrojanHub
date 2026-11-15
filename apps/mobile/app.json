@@ -33,6 +33,13 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TrojanHub uses your photos so you can share a flyer or something you found.",
+          "cameraPermission": "TrojanHub uses the camera so you can snap a flyer or something you found."
+        }
       ]
     ],
     "experiments": {

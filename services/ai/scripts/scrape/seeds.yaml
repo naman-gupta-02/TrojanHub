@@ -1,0 +1,120 @@
+# Hand-picked public USC pages for Tommy's RAG index (ARCHITECTURE.md §7.1).
+# Every URL here returned HTTP 200 when checked on 2026-11-14 (86 pages).
+# Topics are used for filtering and debugging. Add pages through a PR to p1/chatbot.
+
+pages:
+  # --- Basic needs / food pantry (demo question) ---
+  - {url: "https://studentbasicneeds.usc.edu/", topic: basic_needs}
+  - {url: "https://studentbasicneeds.usc.edu/programs-and-services/food-support/", topic: basic_needs}
+  - {url: "https://studentbasicneeds.usc.edu/programs-and-services/food-support/trojan-food-pantry/", topic: basic_needs}
+  - {url: "https://studentbasicneeds.usc.edu/contact/", topic: basic_needs}
+  - {url: "https://campussupport.usc.edu/", topic: basic_needs}
+  - {url: "https://campussupport.usc.edu/students/basic-needs-2/", topic: basic_needs}
+  - {url: "https://campussupport.usc.edu/students/emergency-loan-application/", topic: basic_needs}
+
+  # --- Safety / DPS / lost & found ---
+  - {url: "https://dps.usc.edu/", topic: safety}
+  - {url: "https://dps.usc.edu/contact/", topic: safety}
+  - {url: "https://dps.usc.edu/contact/report/", topic: safety}
+  - {url: "https://dps.usc.edu/services/lost-and-found/", topic: lost_found}
+  - {url: "https://dps.usc.edu/services/shuttles/", topic: transportation}
+  - {url: "https://dps.usc.edu/services/safety-app/", topic: safety}
+  - {url: "https://www.usc.edu/emergency/", topic: safety}
+
+  # --- Facilities / maintenance (complaints routing) ---
+  - {url: "https://fpm.usc.edu/", topic: facilities}
+  - {url: "https://fpm.usc.edu/customer-guide-to-services/", topic: facilities}
+  - {url: "https://fpm.usc.edu/facilities-management-services/", topic: facilities}
+
+  # --- Housing ---
+  - {url: "https://housing.usc.edu/", topic: housing}
+  - {url: "https://housing.usc.edu/index.php/section/after-move-in/", topic: housing}
+  - {url: "https://housing.usc.edu/index.php/section/additional-services/", topic: housing}
+  - {url: "https://housing.usc.edu/index.php/residential-meal-plans/", topic: housing}
+
+  # --- Dining ---
+  - {url: "https://hospitality.usc.edu/", topic: dining}
+  - {url: "https://hospitality.usc.edu/hours-of-operation/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-hall-menus/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-locations/usc-village-dining-hall/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-locations/everybodys-kitchen/", topic: dining}
+  - {url: "https://hospitality.usc.edu/dining-locations/parkside-restaurant-grill/", topic: dining}
+
+  # --- IT ---
+  - {url: "https://itservices.usc.edu/", topic: it}
+  - {url: "https://itservices.usc.edu/about/contact/", topic: it}
+
+  # --- Libraries ---
+  - {url: "https://libraries.usc.edu/", topic: libraries}
+  - {url: "https://libraries.usc.edu/hours", topic: libraries}
+
+  # --- Health ---
+  - {url: "https://studenthealth.usc.edu/", topic: health}
+  - {url: "https://studenthealth.usc.edu/hours/", topic: health}
+  - {url: "https://studenthealth.usc.edu/emergencies/", topic: health}
+  - {url: "https://sites.usc.edu/counselingandmentalhealth/", topic: health}
+
+  # --- Careers ---
+  - {url: "https://careers.usc.edu/", topic: careers}
+  - {url: "https://viterbicareers.usc.edu/", topic: careers}
+
+  # --- Transportation / parking ---
+  - {url: "https://transnet.usc.edu/", topic: transportation}
+  - {url: "https://transnet.usc.edu/index.php/contact-us/", topic: transportation}
+  - {url: "https://transnet.usc.edu/index.php/parking-rates/", topic: transportation}
+  - {url: "https://transnet.usc.edu/index.php/report-a-maintenance-issue/", topic: transportation}
+
+  # --- Academics: degree progress, petitions, transfer credit, advising (added 2026-11-14) ---
+  - {url: "https://arr.usc.edu/", topic: academics}
+  - {url: "https://arr.usc.edu/degree-progress/", topic: academics}
+  - {url: "https://arr.usc.edu/stars-report/", topic: academics}
+  - {url: "https://arr.usc.edu/petition-services/", topic: academics}
+  - {url: "https://arr.usc.edu/transfer-credit-services/", topic: academics}
+  - {url: "https://arr.usc.edu/grades/", topic: academics}
+  - {url: "https://arr.usc.edu/catalogue/", topic: academics}
+  - {url: "https://catalogue.usc.edu/", topic: academics}
+  - {url: "https://usc.edu/academics/undergraduate-study/", topic: academics}
+  - {url: "https://dornsife.usc.edu/advising/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/academic-advising/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/departmental-advising/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/faqs-2/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/what-is-academic-advising2/", topic: advising}
+  - {url: "https://viterbiundergrad.usc.edu/", topic: advising}
+  - {url: "https://viterbiundergrad.usc.edu/viterbi-undergraduate-advising/", topic: advising}
+
+  # --- Department advising: Thomas Lord Dept. of Computer Science (added 2026-11-14) ---
+  - {url: "https://www.cs.usc.edu/students/academic-advisement/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/d-clearance/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/academic-faqs/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/general-faqs/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/approved-non-cs-courses/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/approved-400-level-courses/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/ms-students/prerequisite-information/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/academic-programs/masters/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/bs-students/technical-electives/", topic: advising_cs}
+  - {url: "https://www.cs.usc.edu/students/bs-students/registration-advisement/", topic: advising_cs}
+
+  # --- Advising / student services in other schools (added 2026-11-14). Not reachable for the
+  #     crawler (built in the browser or not linked): Marshall, Thornton, Cinematic Arts,
+  #     Iovine and Young. ---
+  - {url: "https://annenberg.usc.edu/current-students/advisement-and-academic-services", topic: advising}
+  - {url: "https://minghsiehece.usc.edu/students/student-services-faqs/", topic: advising}
+  - {url: "https://ise.usc.edu/current-students/", topic: advising}
+  - {url: "https://ise.usc.edu/current-students/faqs/", topic: advising}
+  - {url: "https://priceschool.usc.edu/students/undergraduate-advisement/", topic: advising}
+  - {url: "https://roski.usc.edu/advisement-for-spring-2027/", topic: advising}
+  - {url: "https://kaufman.usc.edu/student-affairs/", topic: advising}
+  - {url: "https://gould.usc.edu/students/academic-services-honors-programs/", topic: advising}
+  - {url: "https://dramaticarts.usc.edu/know-your-resources-advising/", topic: advising}
+  - {url: "https://dramaticarts.usc.edu/know-your-resources-student-services/", topic: advising}
+
+  # --- Student life / other offices ---
+  - {url: "https://studentlife.usc.edu/", topic: student_life}
+  - {url: "https://usg.usc.edu/", topic: student_life}
+  - {url: "https://recsports.usc.edu/", topic: student_life}
+  - {url: "https://financialaid.usc.edu/", topic: academics}
+  - {url: "https://ois.usc.edu/", topic: academics}
+  - {url: "https://osas.usc.edu/", topic: academics}
+  - {url: "https://kortschakcenter.usc.edu/", topic: academics}
+  - {url: "https://sustainability.usc.edu/", topic: student_life}

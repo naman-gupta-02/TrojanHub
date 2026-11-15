@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from app.core.config import settings
 
@@ -22,6 +22,12 @@ def get_vision_client() -> OpenAI:
             api_key=settings.llm_vision_api_key or settings.llm_api_key or "not-set",
         )
     return get_client()
+
+
+@lru_cache
+def get_async_client() -> AsyncOpenAI:
+    """Async version of the main client (used for streaming chat)."""
+    return AsyncOpenAI(base_url=settings.llm_base_url or None, api_key=settings.llm_api_key or "not-set")
 
 
 def model_name(vision: bool = False) -> str:

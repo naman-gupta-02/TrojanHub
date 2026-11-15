@@ -15,7 +15,8 @@
     "forwarded_at": "2026-11-14T17:14:00Z",
     "status": "sent",
     "urgency": "medium",
-    "report_count": 5
+    "report_count": 5,
+    "photo_url": null
   },
   {
     "id": "a1000000-0000-0000-0000-000000000002",
@@ -33,7 +34,8 @@
     "forwarded_at": "2026-11-14T18:14:00Z",
     "status": "sent",
     "urgency": "medium",
-    "report_count": 5
+    "report_count": 5,
+    "photo_url": null
   },
   {
     "id": "a1000000-0000-0000-0000-000000000003",
@@ -51,7 +53,8 @@
     "forwarded_at": null,
     "status": "reported",
     "urgency": "low",
-    "report_count": 1
+    "report_count": 1,
+    "photo_url": null
   },
   {
     "id": "a1000000-0000-0000-0000-000000000004",
@@ -69,6 +72,7 @@
     "forwarded_at": "2026-11-14T20:14:00Z",
     "status": "sent",
     "urgency": "high",
-    "report_count": 1
+    "report_count": 1,
+    "photo_url": null
   }
 ]

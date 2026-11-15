@@ -1,10 +1,13 @@
-"use client";
-// P3 Parnavi: events calendar + filters, event detail (Add to calendar, Register), flyer scan.
-import { Placeholder } from "@/components/Placeholder";
-import { api } from "@/lib/api";
+// P3 Parnavi: events calendar + filters. Suspense because the filters read the URL (cacheComponents).
+import { Suspense } from "react";
 
-const load = () => api.events.search();
+import { EventsBrowser } from "@/components/events/EventsBrowser";
+import { CardSkeleton } from "@/components/events/kit";
 
 export default function EventsPage() {
-  return <Placeholder title="Events" owner="P3 Parnavi" files="apps/web/app/events/" endpoint="GET /api/events/search" load={load} />;
+  return (
+    <Suspense fallback={<CardSkeleton count={4} />}>
+      <EventsBrowser />
+    </Suspense>
+  );
 }

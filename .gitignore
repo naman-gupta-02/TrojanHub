@@ -27,3 +27,6 @@ services/ai/scripts/scrape/out/
 .DS_Store
 .vscode/
 .idea/
+
+# Codex CLI installed by the Replit build (scripts/replit-start.sh)
+.codex-cli/

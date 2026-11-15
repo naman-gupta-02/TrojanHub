@@ -1,0 +1,266 @@
+"""Data access for events, deals, saves, attendance and rewards (Supabase, service role).
+
+Every query lives here so routes, feed, rewards and notify share one version of "upcoming",
+"active deal", etc. Rows come back as plain dicts shaped like packages/shared/types.ts, plus
+`org_name` / `org_verified` on events (for the verified badge).
+"""
+
+import re
+import time
+import uuid
+from datetime import datetime, timedelta
+
+from app.core.supabase import get_supabase
+from app.events.dates import iso, now_utc, parse_ts
+
+EVENT_SELECT = "*, orgs(name, verified)"
+_TWO_HOURS = timedelta(hours=2)
+
+
+def is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except ValueError:
+        return False
+
+
+def clean_query(q: str | None) -> str:
+    """Keep words only: PostgREST `or=(...)` filters break on commas, parentheses and %."""
+    return re.sub(r"[^\w\s'&-]", " ", q or "").strip()[:80]
+
+
+def _event(row: dict) -> dict:
+    org = row.pop("orgs", None) or {}
+    row["org_name"] = org.get("name")
+    row["org_verified"] = bool(org.get("verified"))
+    return row
+
+
+def _rows(res) -> list[dict]:
+    return list(res.data or []) if res is not None else []
+
+
+# ---------------------------------------------------------------------------
+# Events
+# ---------------------------------------------------------------------------
+def search_events(
+    q: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    category: str | None = None,
+    free: bool | None = None,
+    freebie: bool | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    """Published events, soonest first. With no `start`, hides events that already ended."""
+    query = get_supabase().table("events").select(EVENT_SELECT).eq("status", "published")
+    if start:
+        query = query.gte("starts_at", iso(start))
+    else:
+        # still running or starting later (events without ends_at count as 2h long)
+        query = query.gte("starts_at", iso(now_utc().replace(microsecond=0) - _TWO_HOURS))
+    if end:
+        query = query.lt("starts_at", iso(end))
+    if category:
+        query = query.eq("category", category)
+    if free is not None:
+        query = query.eq("is_free", free)
+    if freebie is not None:
+        query = query.eq("has_freebie", freebie)
+    words = clean_query(q)
+    if words:
+        like = f"%{words}%"
+        query = query.or_(
+            f"title.ilike.{like},description.ilike.{like},location_text.ilike.{like},freebie_desc.ilike.{like}"
+        )
+    rows = [_event(r) for r in _rows(query.order("starts_at").limit(limit).execute())]
+    if not start:
+        now = now_utc()
+        rows = [r for r in rows if (parse_ts(r["ends_at"]) or parse_ts(r["starts_at"]) + _TWO_HOURS) > now]
+    return rows
+
+
+def get_event(event_id: str) -> dict | None:
+    if not is_uuid(event_id):
+        return None
+    rows = _rows(get_supabase().table("events").select(EVENT_SELECT).eq("id", event_id).limit(1).execute())
+    return _event(rows[0]) if rows else None
+
+
+def events_by_ids(ids: list[str] | set[str]) -> list[dict]:
+    ids = [i for i in ids if is_uuid(i)]
+    if not ids:
+        return []
+    res = get_supabase().table("events").select(EVENT_SELECT).in_("id", ids).order("starts_at").execute()
+    return [_event(r) for r in _rows(res)]
+
+
+def events_starting_between(start: datetime, end: datetime) -> list[dict]:
+    res = (
+        get_supabase().table("events").select(EVENT_SELECT).eq("status", "published")
+        .gte("starts_at", iso(start)).lt("starts_at", iso(end)).order("starts_at").execute()
+    )
+    return [_event(r) for r in _rows(res)]
+
+
+def events_tickets_open_between(start: datetime, end: datetime) -> list[dict]:
+    res = (
+        get_supabase().table("events").select(EVENT_SELECT).eq("status", "published")
+        .gte("tickets_open_at", iso(start)).lt("tickets_open_at", iso(end)).execute()
+    )
+    return [_event(r) for r in _rows(res)]
+
+
+def insert_event(row: dict) -> dict:
+    res = get_supabase().table("events").insert(row).execute()
+    return get_event(_rows(res)[0]["id"]) or _rows(res)[0]
+
+
+# ---------------------------------------------------------------------------
+# Deals
+# ---------------------------------------------------------------------------
+def search_deals(q: str | None = None, active: bool = True, limit: int = 100) -> list[dict]:
+    """Active = not expired. One-time deals ending soonest first, then ongoing deals by votes."""
+    query = get_supabase().table("deals").select("*")
+    words = clean_query(q)
+    if words:
+        like = f"%{words}%"
+        query = query.or_(f"title.ilike.{like},description.ilike.{like},how_to_claim.ilike.{like}")
+    rows = _rows(query.limit(limit).execute())
+    if active:
+        now = now_utc()
+        rows = [d for d in rows if not d["expires_at"] or parse_ts(d["expires_at"]) > now]
+    far = parse_ts("2999-01-01T00:00:00Z")
+    rows.sort(key=lambda d: (d["kind"] != "one_time", parse_ts(d["expires_at"]) or far, -d["still_active_votes"]))
+    return rows
+
+
+def get_deal(deal_id: str) -> dict | None:
+    if not is_uuid(deal_id):
+        return None
+    rows = _rows(get_supabase().table("deals").select("*").eq("id", deal_id).limit(1).execute())
+    return rows[0] if rows else None
+
+
+def insert_deal(row: dict) -> dict:
+    return _rows(get_supabase().table("deals").insert(row).execute())[0]
+
+
+def set_deal_votes(deal_id: str, votes: int) -> int:
+    get_supabase().table("deals").update({"still_active_votes": votes}).eq("id", deal_id).execute()
+    return votes
+
+
+# ---------------------------------------------------------------------------
+# Saves, attendance, profiles
+# ---------------------------------------------------------------------------
+def save_event(user_id: str, event_id: str, registered: bool) -> None:
+    row = {"user_id": user_id, "event_id": event_id}
+    existing = _rows(get_supabase().table("event_saves").select("registered").match(row).limit(1).execute())
+    # never "un-register" someone just because they tapped Save again
+    row["registered"] = registered or bool(existing and existing[0]["registered"])
+    get_supabase().table("event_saves").upsert(row, on_conflict="user_id,event_id").execute()
+
+
+def unsave_event(user_id: str, event_id: str) -> None:
+    get_supabase().table("event_saves").delete().match({"user_id": user_id, "event_id": event_id}).execute()
+
+
+def saves_for_user(user_id: str) -> dict[str, bool]:
+    """event_id -> registered"""
+    rows = _rows(get_supabase().table("event_saves").select("event_id, registered").eq("user_id", user_id).execute())
+    return {r["event_id"]: r["registered"] for r in rows}
+
+
+def saves_for_events(event_ids: list[str]) -> list[dict]:
+    if not event_ids:
+        return []
+    return _rows(get_supabase().table("event_saves").select("*").in_("event_id", event_ids).execute())
+
+
+def mark_reminder_sent(save_id: str) -> None:
+    get_supabase().table("event_saves").update({"reminder_sent_at": iso(now_utc())}).eq("id", save_id).execute()
+
+
+def attended_ids(user_id: str) -> set[str]:
+    rows = _rows(get_supabase().table("attendance").select("event_id").eq("user_id", user_id).execute())
+    return {r["event_id"] for r in rows}
+
+
+def check_in(user_id: str, event_id: str) -> bool:
+    """Returns False if the user was already checked in."""
+    if event_id in attended_ids(user_id):
+        return False
+    get_supabase().table("attendance").insert({"user_id": user_id, "event_id": event_id}).execute()
+    return True
+
+
+def profile(user_id: str) -> dict | None:
+    rows = _rows(get_supabase().table("profiles").select("*").eq("id", user_id).limit(1).execute())
+    return rows[0] if rows else None
+
+
+def notify_profiles() -> list[dict]:
+    res = get_supabase().table("profiles").select("*").or_("notify_email.eq.true,notify_push.eq.true").execute()
+    return _rows(res)
+
+
+def update_profile(user_id: str, fields: dict) -> None:
+    get_supabase().table("profiles").update(fields).eq("id", user_id).execute()
+
+
+def user_email(user_id: str) -> str | None:
+    try:
+        res = get_supabase().auth.admin.get_user_by_id(user_id)
+    except Exception:  # unknown user, or auth admin API unavailable
+        return None
+    return getattr(getattr(res, "user", None), "email", None)
+
+
+def log_notification(user_id: str, kind: str, ref_id: str) -> bool:
+    """Claim a notification slot. False = this user already got it (unique user_id+type+ref_id)."""
+    try:
+        get_supabase().table("notification_log").insert({"user_id": user_id, "type": kind, "ref_id": ref_id}).execute()
+        return True
+    except Exception as e:
+        if "23505" in str(e) or "duplicate" in str(e).lower():
+            return False
+        raise
+
+
+# ---------------------------------------------------------------------------
+# Rewards
+# ---------------------------------------------------------------------------
+def reward_programs() -> list[tuple[dict, set[str]]]:
+    """[(program row, {event ids that count toward it})]"""
+    sb = get_supabase()
+    programs = _rows(sb.table("reward_programs").select("*").order("created_at").execute())
+    links = _rows(sb.table("reward_program_events").select("program_id, event_id").execute())
+    by_program: dict[str, set[str]] = {p["id"]: set() for p in programs}
+    for link in links:
+        by_program.setdefault(link["program_id"], set()).add(link["event_id"])
+    return [(p, by_program[p["id"]]) for p in programs]
+
+
+# ---------------------------------------------------------------------------
+# Buildings + orgs (small, cached for a few minutes)
+# ---------------------------------------------------------------------------
+_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
+def buildings() -> list[dict]:
+    hit = _cache.get("buildings")
+    if hit and time.time() - hit[0] < 300:
+        return hit[1]
+    rows = _rows(get_supabase().table("buildings").select("id, code, name, lat, lng").execute())
+    _cache["buildings"] = (time.time(), rows)
+    return rows
+
+
+def find_org(name: str | None) -> dict | None:
+    words = clean_query(name)
+    if not words:
+        return None
+    rows = _rows(get_supabase().table("orgs").select("*").ilike("name", words).limit(1).execute())
+    return rows[0] if rows else None

@@ -1,0 +1,106 @@
+{
+  "_about": "Mock SSE stream for POST /api/chat (P1). Each event is sent as `data: <json>\\n\\n`. The server picks a scenario whose `match` words appear in the message, otherwise `no_answer`. A message with a photo always gets the `flyer` scenario. All hours and contacts here are placeholders marked [MOCK]; the real bot copies them from scraped pages.",
+  "_event_shapes": {
+    "token": {"type": "token", "text": "string chunk of the answer"},
+    "tool_call": {"type": "tool_call", "id": "call_1", "name": "tool name", "arguments": {}},
+    "tool_result": {"type": "tool_result", "id": "call_1", "name": "tool name", "result": {}},
+    "sources": {"type": "sources", "sources": [{"n": 1, "title": "", "url": "", "snippet": ""}]},
+    "confirm": {"type": "confirm", "action_id": "act_1", "tool": "tool name", "title": "card title", "summary": "one line", "draft": {}},
+    "done": {"type": "done", "session_id": "string"}
+  },
+  "scenarios": {
+    "pantry": {
+      "match": ["pantry", "food bank", "basic needs"],
+      "events": [
+        {"type": "tool_call", "id": "call_1", "name": "search_usc_info", "arguments": {"query": "Trojan Food Pantry hours and location"}},
+        {"type": "tool_result", "id": "call_1", "name": "search_usc_info", "result": {"chunks": 2, "top_score": 0.71}},
+        {"type": "token", "text": "The Trojan Food Pantry is run by USC Student Basic Needs. "},
+        {"type": "token", "text": "It's open [MOCK: hours from the page] at [MOCK: location] [1]. "},
+        {"type": "token", "text": "You can reach Basic Needs at [MOCK: email from page] [2]."},
+        {"type": "sources", "sources": [
+          {"n": 1, "title": "Trojan Food Pantry | Student Basic Needs", "url": "https://studentbasicneeds.usc.edu/programs-and-services/food-support/trojan-food-pantry/", "snippet": "[MOCK] The Trojan Food Pantry provides..."},
+          {"n": 2, "title": "Contact | Student Basic Needs", "url": "https://studentbasicneeds.usc.edu/contact/", "snippet": "[MOCK] Contact us..."}
+        ]},
+        {"type": "done", "session_id": "mock-session"}
+      ]
+    },
+    "complaint": {
+      "match": ["hot", "cold", "broken", "leak", "ac", "heater", "gfs"],
+      "events": [
+        {"type": "tool_call", "id": "call_1", "name": "log_complaint", "arguments": {"text": "it's so hot in GFS 213", "building": "GFS", "room": "213"}},
+        {"type": "tool_result", "id": "call_1", "name": "log_complaint", "result": {
+          "draft": {"department": "Facilities", "category": "HVAC", "urgency": "medium", "building": "GFS", "room": "213", "summary": "Room is too hot; AC may not be working"},
+          "duplicate_ticket": {"id": "00000000-0000-0000-0000-0000000000a1", "report_count": 4}
+        }},
+        {"type": "token", "text": "Sounds like an AC problem. 4 other students already reported this room. "},
+        {"type": "token", "text": "Want me to add your report to the Facilities ticket?"},
+        {"type": "confirm", "action_id": "act_mock_complaint", "tool": "log_complaint", "title": "Log a complaint", "summary": "Facilities · HVAC · medium · GFS 213 · 4 others reported this", "draft": {
+          "text": "it's so hot in GFS 213", "department": "Facilities", "category": "HVAC", "urgency": "medium", "building": "GFS", "room": "213", "summary": "Room is too hot; AC may not be working", "anonymous": false
+        }},
+        {"type": "done", "session_id": "mock-session"}
+      ]
+    },
+    "lost_item": {
+      "match": ["hydro flask", "lost my", "anyone find", "did anyone"],
+      "events": [
+        {"type": "tool_call", "id": "call_1", "name": "search_lost_items", "arguments": {"query": "black Hydro Flask with a Trojans sticker"}},
+        {"type": "tool_result", "id": "call_1", "name": "search_lost_items", "result": {"results": [
+          {"item": {"id": "00000000-0000-0000-0000-0000000000b1", "title": "Black water bottle with sticker", "tier": "everyday", "location_text": "Leavey Library, 2nd floor", "photo_url": null}, "score": 0.83}
+        ]}},
+        {"type": "token", "text": "Good news: someone found a black water bottle with a sticker at Leavey Library (2nd floor). "},
+        {"type": "token", "text": "Open the item to check the photo, and tap \"This is mine\" to message the finder."},
+        {"type": "done", "session_id": "mock-session"}
+      ]
+    },
+    "freebies": {
+      "match": ["free food", "free", "freebie", "deal"],
+      "events": [
+        {"type": "tool_call", "id": "call_1", "name": "search_events", "arguments": {"query": "free food", "date_range": "today", "freebie_only": true}},
+        {"type": "tool_result", "id": "call_1", "name": "search_events", "result": {"events": [
+          {"id": "00000000-0000-0000-0000-0000000000c1", "title": "[MOCK] Free boba outside the Village", "starts_at": "2026-11-14T22:00:00Z", "freebie_desc": "Boba"}
+        ]}},
+        {"type": "token", "text": "Today there's [MOCK] free boba outside the Village from 2 to 4 PM. "},
+        {"type": "token", "text": "Want me to save it to your calendar?"},
+        {"type": "done", "session_id": "mock-session"}
+      ]
+    },
+    "flyer": {
+      "match": [],
+      "events": [
+        {"type": "tool_call", "id": "call_1", "name": "scan_flyer", "arguments": {"image_url": "photo://1"}},
+        {"type": "tool_result", "id": "call_1", "name": "scan_flyer", "result": {"status": "awaiting_confirmation", "action_id": "act_mock_flyer", "draft": {"title": "[MOCK] Diwali Night", "starts_at": "2026-11-21T03:00:00Z", "ends_at": null, "location_text": "TCC Grand Ballroom", "building_id": "b0000000-0000-0000-0000-000000000009", "is_free": false, "has_freebie": false, "freebie_desc": null, "register_url": null, "org_name": "[MOCK] South Asian student org", "category": "cultural", "type": "event", "missing": ["ends_at", "register_url"], "flyer_url": "photo://1"}}},
+        {"type": "token", "text": "I read the flyer: [MOCK] Diwali Night, Fri Nov 20 at 7 PM, TCC Grand Ballroom. "},
+        {"type": "token", "text": "The end time and sign-up link are missing. Tap Confirm to add it to Events."},
+        {"type": "confirm", "action_id": "act_mock_flyer", "tool": "scan_flyer", "title": "Add this event", "summary": "[MOCK] Diwali Night · Fri Nov 20, 7 PM PT · TCC Grand Ballroom · missing: ends_at, register_url", "draft": {"title": "[MOCK] Diwali Night", "starts_at": "2026-11-21T03:00:00Z", "ends_at": null, "location_text": "TCC Grand Ballroom", "building_id": "b0000000-0000-0000-0000-000000000009", "is_free": false, "has_freebie": false, "freebie_desc": null, "register_url": null, "org_name": "[MOCK] South Asian student org", "category": "cultural", "type": "event", "missing": ["ends_at", "register_url"], "flyer_url": "photo://1"}},
+        {"type": "done", "session_id": "mock-session"}
+      ]
+    },
+    "no_answer": {
+      "match": [],
+      "events": [
+        {"type": "tool_call", "id": "call_1", "name": "search_usc_info", "arguments": {"query": "user question"}},
+        {"type": "tool_result", "id": "call_1", "name": "search_usc_info", "result": {"chunks": 0, "no_answer": true}},
+        {"type": "token", "text": "I couldn't find that on USC's pages. "},
+        {"type": "token", "text": "The closest official page is Student Life [1]."},
+        {"type": "sources", "sources": [
+          {"n": 1, "title": "USC Student Life", "url": "https://studentlife.usc.edu/", "snippet": ""}
+        ]},
+        {"type": "done", "session_id": "mock-session"}
+      ]
+    }
+  },
+  "confirm_responses": {
+    "_about": "Mock /api/chat/confirm responses for specific action ids (others use confirm_response).",
+    "act_mock_flyer": {"status": "done", "message": "Added! [MOCK] Diwali Night is on the Events calendar.", "result": {"event_id": "e0000000-0000-0000-0000-000000000003"}}
+  },
+  "confirm_response": {
+    "_about": "Mock response for POST /api/chat/confirm when approved=true.",
+    "action_id": "act_mock_complaint",
+    "status": "done",
+    "message": "Logged! Your report was added to the Facilities ticket for GFS 213 (5 reports now).",
+    "result": {
+      "ticket": {"id": "00000000-0000-0000-0000-0000000000a1", "status": "reported", "report_count": 5, "department": "Facilities"},
+      "route_url": "https://fpm.usc.edu/customer-guide-to-services/"
+    }
+  }
+}

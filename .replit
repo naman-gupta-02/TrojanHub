@@ -1,0 +1,13 @@
+# Replit: TrojanHub website + AI service in one app, one public URL (see DEPLOY.md).
+# Secrets (SUPABASE_*, NEXT_PUBLIC_*, LLM_*, CRON_SECRET...) go in the Secrets tab, never here.
+modules = ["python-3.11", "nodejs-22"]
+run = "sh scripts/replit-start.sh"
+
+[deployment]
+deploymentTarget = "gce"
+build = ["sh", "-c", "pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && grep -v '^pytest' services/ai/requirements.txt > /tmp/req.txt && pip install -r /tmp/req.txt && npm ci && npm install --no-save --prefix .codex-cli @openai/codex@0.154.0 && API_PROXY_TARGET=http://127.0.0.1:8000 NEXT_PUBLIC_API_URL=/ npm --workspace apps/web run build"]
+run = ["sh", "scripts/replit-start.sh"]
+
+[[ports]]
+localPort = 3000
+externalPort = 80

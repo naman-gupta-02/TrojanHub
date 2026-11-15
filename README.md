@@ -98,6 +98,11 @@ What's already shared and ready:
 3. Put the keys in `services/ai/.env` (URL, anon, service role), `apps/web/.env.local` and `apps/mobile/.env` (URL + anon only). See each `.env.example`.
 4. Share the URL and anon key with the team. **Never share the service role key** outside the AI service.
 
+## Try it online
+
+Deploying on Replit (one app, one URL for the website and the AI service): see
+[`DEPLOY.md`](DEPLOY.md).
+
 ## Contributing
 
 - Work on your own branch: `p1/chatbot`, `p2/lost-found`, `p3/events` or `p4/platform`.
