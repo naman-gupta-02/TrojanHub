@@ -15,6 +15,27 @@ export NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-$SUPABASE
 PIDS=""
 trap 'kill $PIDS 2>/dev/null' EXIT INT TERM
 
+# Answer Replit's health checks right away: a tiny "starting" page on the public port while the
+# AI service loads and the website (re)builds. Replit fails the publish if / doesn't answer soon.
+python3 - "${PORT:-3000}" <<'PY' &
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+PAGE = (b"<!doctype html><meta charset=utf-8><meta http-equiv=refresh content=10>"
+        b"<title>TrojanHub</title><body style='font-family:system-ui;text-align:center;padding:4rem'>"
+        b"<h1 style='color:#990000'>TrojanHub is starting\xe2\x80\xa6</h1>"
+        b"<p>This page refreshes by itself in a few seconds.</p>")
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(PAGE)
+    do_HEAD = do_GET
+    def log_message(self, *args):
+        pass
+ThreadingHTTPServer(("0.0.0.0", int(sys.argv[1])), H).serve_forever()
+PY
+PLACEHOLDER_PID=$!
+PIDS="$PIDS $PLACEHOLDER_PID"
+
 # Optional: run the LLM on a ChatGPT login through the Codex shim (Naman's decision, 2026-11-14).
 # Secret CODEX_AUTH_JSON = the contents of ~/.codex/auth.json after `codex login`. A real API
 # key (LLM_API_KEY) wins if both are set. The shim only listens on 127.0.0.1.
@@ -60,4 +81,7 @@ if [ ! -f apps/web/.next/BUILD_ID ] || [ "$(cat "$marker" 2>/dev/null)" != "$fin
 fi
 [ -n "$NEXT_PUBLIC_SUPABASE_URL" ] || echo "WARNING: no Supabase URL for the website: sign-in will be off"
 
+# Hand the public port over from the placeholder to the real website.
+kill $PLACEHOLDER_PID 2>/dev/null || true
+wait $PLACEHOLDER_PID 2>/dev/null || true
 exec npm --workspace apps/web run start -- --hostname 0.0.0.0 --port "${PORT:-3000}"
