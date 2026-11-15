@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 
-import { Chip, ErrorState, Verified, btn, categoryInfo, errorMessage, fmtTime, relativeDay, timeRange, untilLabel, useApi } from "./kit";
+import { Chip, ErrorState, Verified, btn, canCheckIn, categoryInfo, errorMessage, fmtTime, relativeDay, timeRange, untilLabel, useApi, useNow } from "./kit";
 
 export function EventDetail() {
   const { id } = useParams<{ id: string }>();
@@ -49,13 +49,21 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
       }
     });
 
-  const register = () =>
-    act("register", async () => {
-      await api.events.save(e.id, { register: true });
+  const register = () => {
+    // open the form right on the click; after an await, browsers treat it as a popup and block it
+    if (e.register_url) window.open(e.register_url, "_blank", "noopener");
+    return act("register", async () => {
+      try {
+        await api.events.save(e.id, { register: true });
+      } catch (err) {
+        // the organizer's form is open either way; only our calendar copy failed
+        if (e.register_url) throw new Error(`The form is open in a new tab, but we couldn't add it to your TrojanHub calendar: ${errorMessage(err)}`);
+        throw err;
+      }
       onChange({ ...d, saved: true, registered: true });
-      if (e.register_url) window.open(e.register_url, "_blank", "noopener");
-      else setToast({ ok: true, text: "You're registered! It's on your TrojanHub calendar." });
+      if (!e.register_url) setToast({ ok: true, text: "You're registered! It's on your TrojanHub calendar." });
     });
+  };
 
   return (
     <article className="grid gap-8 lg:grid-cols-[1fr_340px]">
@@ -212,7 +220,8 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CheckinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const live = untilLabel(detail.event.starts_at, detail.event.ends_at) === "Happening now";
+  useNow(); // re-check every 30 s, so "I'm here!" appears without a refresh
+  const live = canCheckIn(detail.event.starts_at, detail.event.ends_at);
 
   async function checkIn(withCode?: string) {
     setBusy(true);

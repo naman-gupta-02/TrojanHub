@@ -27,12 +27,14 @@ import hmac
 import uuid
 from datetime import datetime, timedelta
 from typing import Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.auth import get_user_id
+from app.core.auth import ADMIN_ROLES, get_user_id
+from app.core.config import settings
 from app.core.mocks import load_mock
 from app.core.supabase import get_supabase
 from app.events import dedupe, feed as feed_builder, flyer, ics, rewards, store
@@ -88,9 +90,17 @@ class EventCreate(BaseModel):
     flyer_url: str | None = None
     force: bool = False  # true = "post anyway" after a duplicate warning
 
-    @field_validator("register_url", "ticket_url", "flyer_url")
+    @field_validator("register_url", "ticket_url")
     @classmethod
     def _add_scheme(cls, v: str | None) -> str | None:
+        return _https(v)
+
+    @field_validator("flyer_url")
+    @classmethod
+    def _flyer(cls, v: str | None) -> str | None:
+        # a data: URL (photo straight from the phone) is uploaded to Storage in create_event
+        if v and v.strip().startswith("data:image/"):
+            return v.strip()
         return _https(v)
 
 
@@ -139,6 +149,17 @@ def _mock_event(event_id: str) -> dict:
     raise _not_found()
 
 
+def _is_organizer(event: dict, user_id: str) -> bool:
+    if event.get("posted_by") and event["posted_by"] == user_id:
+        return True
+    if event.get("org_id"):
+        org = store.get_org(event["org_id"])
+        if org and org.get("owner_id") == user_id:
+            return True
+    profile = store.profile(user_id)
+    return bool(profile and profile.get("role") in ADMIN_ROLES)
+
+
 def checkin_code(event_id: str) -> str:
     return hmac.new(signing_secret(), f"checkin:{event_id}".encode(), hashlib.sha256).hexdigest()[:8].upper()
 
@@ -153,22 +174,55 @@ def _in_checkin_window(e: dict) -> bool:
 # ---------------------------------------------------------------------------
 # Flyers
 # ---------------------------------------------------------------------------
+# Photo types we store. No SVG: the flyers bucket is public, and SVG can carry scripts.
+_IMAGE_TYPES = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp",
+                "image/heic": "heic", "image/heif": "heif", "image/gif": "gif"}
+
+
+def _store_flyer(data: bytes, mime: str, user_id: str) -> str:
+    """Bytes -> public URL in the `flyers` bucket."""
+    if mime not in _IMAGE_TYPES:
+        raise HTTPException(415, detail={"code": "not_an_image", "message": "Upload a JPG, PNG, WebP or HEIC photo of the flyer"})
+    if len(data) > flyer.MAX_IMAGE_BYTES:
+        raise HTTPException(413, detail={"code": "image_too_large", "message": "Flyer photo must be under 8 MB"})
+    path = f"{user_id}/{uuid.uuid4().hex}.{_IMAGE_TYPES[mime]}"
+    bucket = get_supabase().storage.from_("flyers")
+    try:
+        bucket.upload(path, data, {"content-type": mime})
+    except Exception as e:
+        raise HTTPException(502, detail={"code": "upload_failed", "message": "Couldn't save the flyer photo. Try again."}) from e
+    return bucket.get_public_url(path).rstrip("?")
+
+
+def _flyer_url_for_event(flyer_url: str | None, user_id: str) -> str | None:
+    """What we keep in events.flyer_url: our own Storage URL, or nothing."""
+    if not flyer_url:
+        return None
+    if flyer_url.startswith("data:image/"):
+        header, _, data = flyer_url.partition(",")
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except ValueError:
+            return None
+        try:
+            return _store_flyer(raw, header.removeprefix("data:").split(";")[0], user_id)
+        except HTTPException:
+            return None  # the event matters more than its picture
+    storage_host = urlparse(settings.supabase_url).hostname
+    return flyer_url if storage_host and urlparse(flyer_url).hostname == storage_host else None
+
+
 @router.post("/flyers/upload")
 async def upload_flyer(photo: UploadFile = File(...), user_id: str = Depends(get_user_id)) -> dict:
     """Stores the photo in the public `flyers` bucket -> {image_url} for /flyers/scan and events.flyer_url.
     Server-side, so it works before login (Storage only lets signed-in users upload directly)."""
     data = await photo.read()
-    mime = (photo.content_type or "image/jpeg").split(";")[0]
-    if not mime.startswith("image/"):
-        raise HTTPException(415, detail={"code": "not_an_image", "message": "Upload a photo of the flyer"})
-    if len(data) > flyer.MAX_IMAGE_BYTES:
-        raise HTTPException(413, detail={"code": "image_too_large", "message": "Flyer photo must be under 8 MB"})
+    mime = (photo.content_type or "image/jpeg").split(";")[0].lower()
     if not db_live():
+        if not mime.startswith("image/"):
+            raise HTTPException(415, detail={"code": "not_an_image", "message": "Upload a photo of the flyer"})
         return {"image_url": f"data:{mime};base64,{base64.b64encode(data).decode()}"}
-    path = f"{user_id}/{uuid.uuid4().hex}.{mime.split('/')[1].replace('jpeg', 'jpg')}"
-    bucket = get_supabase().storage.from_("flyers")
-    bucket.upload(path, data, {"content-type": mime})
-    return {"image_url": bucket.get_public_url(path).rstrip("?")}
+    return {"image_url": _store_flyer(data, mime, user_id)}
 
 
 @router.post("/flyers/scan")
@@ -263,6 +317,7 @@ def create_event(req: EventCreate, user_id: str = Depends(get_user_id)) -> dict:
     org = store.find_org(req.org_name)
     poster = store.profile(user_id)
     # "org" (verified badge) only when the poster owns that verified org
+    flyer_url = _flyer_url_for_event(req.flyer_url, user_id)
     if org and org["verified"] and poster and org["owner_id"] == user_id:
         source = "org"
     else:
@@ -288,7 +343,7 @@ def create_event(req: EventCreate, user_id: str = Depends(get_user_id)) -> dict:
         "org_id": org["id"] if org else None,
         "posted_by": user_id if poster else None,
         "source": source,
-        "flyer_url": req.flyer_url,
+        "flyer_url": flyer_url,
         "status": "published",
     }
     return {"event": store.insert_event(row)}
@@ -323,9 +378,9 @@ def event_ics(event_id: str) -> Response:
 
 @router.get("/events/{event_id}/checkin-code")
 def get_checkin_code(event_id: str, user_id: str = Depends(get_user_id)) -> dict:
-    """For the QR on the event screen. Only the poster can see it once real login is on."""
+    """For the QR on the event screen: the poster, the owner of the hosting org, or an admin."""
     event = _event_or_404(event_id)
-    if db_live() and event.get("posted_by") and event["posted_by"] != user_id and store.profile(user_id):
+    if db_live() and not _is_organizer(event, user_id):
         raise HTTPException(403, detail={"code": "forbidden", "message": "Only the organizer can show the check-in code"})
     return {"code": checkin_code(event_id), "checkin_url": f"trojanhub://checkin/{event_id}?code={checkin_code(event_id)}"}
 

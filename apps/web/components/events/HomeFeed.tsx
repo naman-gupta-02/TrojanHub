@@ -15,6 +15,7 @@ import {
   EventCard,
   SectionTitle,
   btn,
+  dayKey,
   errorMessage,
   fmtTime,
   untilLabel,
@@ -23,6 +24,12 @@ import {
 
 const noSubscribe = () => () => {};
 const laHour = () => Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hourCycle: "h23" }).format(new Date()));
+
+/** Link to today's freebies. The day is added in the browser only (server and browser may disagree near midnight). */
+function useFreeTodayHref(): string {
+  const day = useSyncExternalStore(noSubscribe, () => dayKey(new Date()), () => null);
+  return day ? `/events?freebie=true&day=${day}` : "/events?freebie=true";
+}
 
 /** Time-of-day greeting. Read in the browser only; the server renders a neutral "Hello". */
 function useGreeting(): string {
@@ -37,6 +44,7 @@ function FeedCard({ item }: { item: FeedItem }) {
 
 export function HomeFeed() {
   const greeting = useGreeting();
+  const freeTodayHref = useFreeTodayHref();
   const feed = useApi(() => api.feed());
   const mine = useApi(() => api.events.mine());
   const rewards = useApi(() => api.rewards.progress());
@@ -60,7 +68,7 @@ export function HomeFeed() {
           <Link href="/events/scan" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-gold px-5 font-semibold text-ink">
             📸 Scan a flyer
           </Link>
-          <Link href="/events?freebie=true" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/40 px-5 font-semibold">
+          <Link href={freeTodayHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/40 px-5 font-semibold">
             Everything free today
           </Link>
         </div>
@@ -84,7 +92,7 @@ export function HomeFeed() {
 
       <div className="grid gap-10 lg:grid-cols-[2fr_1fr]">
         <section className="space-y-3" aria-labelledby="free-today">
-          <SectionTitle action={<Link href="/events?freebie=true" className="text-sm font-semibold text-cardinal">See all →</Link>}>
+          <SectionTitle action={<Link href={freeTodayHref} className="text-sm font-semibold text-cardinal">See all →</Link>}>
             <span id="free-today">🎁 Free today</span>
           </SectionTitle>
           {feed.loading && !feed.data && <CardSkeleton count={2} />}

@@ -73,6 +73,19 @@ def score_deal(d: dict, interests: set[str]) -> tuple[float, str]:
     return 1 + min(votes / 5, 1.5), (f"{votes} students say it still works" if votes >= 3 else "Student deal")
 
 
+def is_free_today(d: dict, day_start, day_end, now) -> bool:
+    """A one-time deal that's on today and is a today thing: it ends within 24 hours, or it
+    started today. A 3-day BOGO stays on the Deals page instead of every morning's digest."""
+    if d["kind"] != "one_time":
+        return False
+    starts, ends = parse_ts(d.get("starts_at")), parse_ts(d.get("expires_at"))
+    if starts and starts >= day_end:
+        return False  # starts tomorrow or later
+    if ends and ends <= now:
+        return False
+    return bool((ends and ends - now <= timedelta(hours=24)) or (starts and starts >= day_start))
+
+
 def today_freebies(events: list[dict], deals: list[dict]) -> list[dict]:
     start, end = la_day_bounds()
     now = now_utc()
@@ -82,11 +95,7 @@ def today_freebies(events: list[dict], deals: list[dict]) -> list[dict]:
         if e["has_freebie"] and start <= parse_ts(e["starts_at"]) < end
         and (parse_ts(e["ends_at"]) or parse_ts(e["starts_at"]) + timedelta(hours=2)) > now
     ]
-    items += [
-        {"kind": "deal", "deal": d}
-        for d in deals
-        if d["kind"] == "one_time" and (not d["starts_at"] or parse_ts(d["starts_at"]) < end)
-    ]
+    items += [{"kind": "deal", "deal": d} for d in deals if is_free_today(d, start, end, now)]
     # events by start time, then deals ending soonest
     return sorted(items, key=lambda i: (0, i["event"]["starts_at"]) if i["kind"] == "event"
                   else (1, i["deal"]["expires_at"] or "9999"))

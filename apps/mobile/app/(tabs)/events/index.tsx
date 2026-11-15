@@ -2,7 +2,7 @@
 import type { Event, EventCategory, RewardProgress } from '@trojanhub/shared/types';
 import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 
 import {
@@ -15,9 +15,11 @@ import {
   Segmented,
   dateParts,
   dayKey,
+  fromLocalInput,
   relativeDay,
   s,
   useApi,
+  useDebounced,
 } from '@/components/events/kit';
 import { api } from '@/lib/api';
 
@@ -26,6 +28,10 @@ type Tab = 'events' | 'deals' | 'rewards';
 export default function EventsScreen() {
   const params = useLocalSearchParams<{ tab?: string }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'deals' || params.tab === 'rewards' ? params.tab : 'events');
+  // this screen stays mounted, so follow later links like /events?tab=rewards too
+  useEffect(() => {
+    if (params.tab === 'events' || params.tab === 'deals' || params.tab === 'rewards') setTab(params.tab);
+  }, [params.tab]);
 
   return (
     <View style={s.screen}>
@@ -63,9 +69,16 @@ function EventsTab() {
   const [category, setCategory] = useState<EventCategory | undefined>();
   const [freebie, setFreebie] = useState(false);
   const [day, setDay] = useState<string | null>(null);
-  const events = useApi(() => api.events.search({ q: q || undefined, category, freebie: freebie || undefined }), `${q}|${category}|${freebie}`);
-
+  const query = useDebounced(q.trim());
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => dayKey(new Date(Date.now() + i * 86_400_000))), []);
+  // the calendar shows the next 7 days; a search looks at everything coming up
+  const weekEnd = useMemo(() => fromLocalInput(`${days[days.length - 1]}T23:59`) ?? undefined, [days]);
+  const to = query ? undefined : weekEnd;
+  const events = useApi(
+    () => api.events.search({ q: query || undefined, category, freebie: freebie || undefined, to }),
+    `${query}|${category}|${freebie}|${to}`,
+  );
+
   const groups = useMemo(() => {
     const map = new Map<string, Event[]>();
     for (const e of events.data?.events ?? []) {
@@ -87,7 +100,7 @@ function EventsTab() {
       </ScrollView>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }} accessibilityLabel="Pick a day">
-        <DayChip on={!day} onPress={() => setDay(null)} top="All" big="7d" />
+        <DayChip on={!day} onPress={() => setDay(null)} top="All" big={query ? 'All' : '7d'} />
         {days.map((d, i) => {
           const p = dateParts(`${d}T20:00:00Z`);
           return <DayChip key={d} on={day === d} onPress={() => setDay(day === d ? null : d)} top={i === 0 ? 'Today' : p.weekday} big={p.day} />;
@@ -139,7 +152,8 @@ function DayChip({ on, onPress, top, big }: { on: boolean; onPress: () => void; 
 // ---------------------------------------------------------------------------
 function DealsTab() {
   const [q, setQ] = useState('');
-  const deals = useApi(() => api.deals.search({ q: q || undefined, active: true }), q);
+  const query = useDebounced(q.trim());
+  const deals = useApi(() => api.deals.search({ q: query || undefined, active: true }), query);
   const oneTime = deals.data?.deals.filter((d) => d.kind === 'one_time') ?? [];
   const ongoing = deals.data?.deals.filter((d) => d.kind === 'ongoing') ?? [];
   return (

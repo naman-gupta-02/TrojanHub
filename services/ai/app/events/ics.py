@@ -6,7 +6,8 @@ from urllib.parse import urlencode
 from app.events.dates import now_utc, parse_ts
 from app.events.settings import p3
 
-DEFAULT_LENGTH = timedelta(hours=1)
+# Same as everywhere else in the app: an event with no end time counts as 2 hours long
+DEFAULT_LENGTH = timedelta(hours=2)
 
 
 def _stamp(dt) -> str:

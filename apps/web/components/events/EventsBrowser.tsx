@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 
-import { CATEGORIES, CardSkeleton, EmptyState, ErrorState, EventCard, btn, dateParts, dayKey, relativeDay, useApi } from "./kit";
+import { CATEGORIES, CardSkeleton, EmptyState, ErrorState, EventCard, btn, dateParts, dayKey, fromLocalInput, relativeDay, useApi } from "./kit";
 
 const DAYS = 7;
 
@@ -49,8 +49,11 @@ export function EventsBrowser() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  const events = useApi(() => api.events.search({ q: q || undefined, category, freebie, free }), [q, category, freebie, free].join("|"));
   const days = useMemo(() => nextDays(), []);
+  // the calendar shows the next 7 days; a search looks at everything coming up
+  const weekEnd = useMemo(() => fromLocalInput(`${days[days.length - 1]}T23:59`) ?? undefined, [days]);
+  const to = q ? undefined : weekEnd;
+  const events = useApi(() => api.events.search({ q: q || undefined, category, freebie, free, to }), [q, category, freebie, free, to].join("|"));
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -116,7 +119,7 @@ export function EventsBrowser() {
       </div>
 
       <nav aria-label="Pick a day" className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-        <DayButton on={!day} onClick={() => setParam("day", null)} top="All" big="7d" count={events.data?.events.length} />
+        <DayButton on={!day} onClick={() => setParam("day", null)} top="All" big={q ? "All" : "7d"} count={events.data?.events.length} />
         {days.map((d) => {
           const p = dateParts(`${d}T20:00:00Z`);
           return (
