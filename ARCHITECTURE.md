@@ -129,7 +129,7 @@ each feature works the same whether it's used from a screen or from chat.
 | Layer | Choice | Notes |
 |---|---|---|
 | Mobile | React Native + **Expo** (expo-router, expo-camera / image-picker, expo-notifications) | Run with Expo Go for the demo |
-| Web | **Next.js 14+** (App Router) + **Tailwind** + shadcn/ui | Cardinal `#990000`, gold `#FFCC00` |
+| Web | **Next.js 16** (App Router) + **Tailwind** + shadcn/ui | Cardinal `#990000`, gold `#FFCC00` |
 | Shared | `packages/shared`: TS types, zod schemas, typed API client | Mobile and web both import this |
 | DB / Auth / Storage | **Supabase**: Postgres + `pgvector`, Auth, Storage, Realtime | Row-level security (RLS) on |
 | AI service | **FastAPI** (Python 3.11) on **Replit** | Qualifies for Best Use of Replit |
