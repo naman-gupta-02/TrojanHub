@@ -11,3 +11,14 @@ run = ["sh", "scripts/replit-start.sh"]
 [[ports]]
 localPort = 3000
 externalPort = 80
+
+# Replit's own package installer must stay off: the build above installs everything. When it ran
+# during a publish it rewrote files in .pythonlibs while the deploy image was being packed, and the
+# publish failed with "archive/tar: write too long" (2026-11-14).
+[packager]
+language = "python3"
+
+[packager.features]
+enabledForHosting = false
+guessImports = false
+packageSearch = false

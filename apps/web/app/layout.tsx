@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 
+import { AdminNavLink } from "@/components/AdminNavLink";
 import { AuthStatus } from "@/components/AuthStatus";
 import "./globals.css";
 
@@ -22,8 +23,7 @@ const NAV = [
   { href: "/deals", label: "Deals" },
   { href: "/rewards", label: "Rewards" },
   { href: "/report", label: "Report" },
-  { href: "/admin", label: "Admin" },
-];
+]; // "Admin" is added by <AdminNavLink /> for admin accounts only
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -39,6 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 {n.label}
               </Link>
             ))}
+            <AdminNavLink />
             <AuthStatus />
           </nav>
         </header>

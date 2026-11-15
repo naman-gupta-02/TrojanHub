@@ -8,6 +8,8 @@ POST /items/{id}/claim
 While settings.mock("lostfound") is true (USE_MOCKS=true and "lostfound" not in REAL_FEATURES),
 these serve packages/shared/mocks/items_*.json. Otherwise the real logic runs: items.py (post),
 search.py (search), claim.py (claim). Response shapes follow types.ts.
+Lost & Found is for signed-in USC students (items are only readable when signed in, see RLS);
+posting and claiming always need a sign-in, even while mocked.
 """
 
 import re
@@ -16,7 +18,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
-from app.core.auth import get_user_id
+from app.core.auth import get_user_id, require_signed_in
 from app.core.config import settings
 from app.core.mocks import load_mock
 from app.lostfound import claim, items, search, warmup
@@ -35,7 +37,7 @@ async def create_item(
     description: str | None = Form(None),
     building_id: str | None = Form(None),
     location_text: str | None = Form(None),
-    user_id: str = Depends(get_user_id),
+    user_id: str = Depends(require_signed_in),  # posting always needs a USC sign-in
 ) -> dict:
     if settings.mock("lostfound"):
         valuable = bool(description and _VALUABLE_WORDS.search(description.lower()))
@@ -79,7 +81,7 @@ async def search_items_by_image(photo: UploadFile = File(...), user_id: str = De
 
 
 @router.post("/items/{item_id}/claim")
-async def claim_item(item_id: str, user_id: str = Depends(get_user_id)) -> dict:
+async def claim_item(item_id: str, user_id: str = Depends(require_signed_in)) -> dict:
     if settings.mock("lostfound"):
         return load_mock("items_claim_valuable" if item_id == _VALUABLE_ITEM_ID else "items_claim")
     try:
