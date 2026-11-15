@@ -1,6 +1,6 @@
 """P4 Jaymin: Smart Complaints (ARCHITECTURE.md §6, §7.4).
 
-POST /complaints            {text, building_id?, room?, anonymous?, confirm?, source?}
+POST /complaints            {text, building_id?, building?, room?, anonymous?, confirm?, source?}
 GET  /complaints/mine
 POST /tickets/{id}/upvote
 
@@ -21,7 +21,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.complaints import store
-from app.complaints.classify import Classification, classify
+from app.complaints.classify import Classification, classify, find_building
 from app.complaints.dedupe import find_duplicate
 from app.complaints.routing import build_route, find_route
 from app.core.auth import get_user_id
@@ -40,6 +40,7 @@ MAX_TEXT_CHARS = 2000
 class ComplaintRequest(BaseModel):
     text: str
     building_id: str | None = None
+    building: str | None = None  # code or name ("GFS", "Leavey Library"); Tommy sends this. building_id wins.
     room: str | None = None
     anonymous: bool = False
     confirm: bool = False
@@ -101,6 +102,9 @@ def _sort_report(req: ComplaintRequest) -> tuple[Classification, dict | None, li
             raise _error(422, "unknown_building", "building_id is not a known building")
         result.building_code = building["code"]
     else:
+        named = find_building(req.building, buildings) if req.building else None
+        if named:
+            result.building_code = named
         building = next((b for b in buildings if b["code"] == result.building_code), None)
     if req.room and req.room.strip():
         result.room = req.room.strip().upper()[:20]

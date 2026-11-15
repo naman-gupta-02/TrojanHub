@@ -232,3 +232,38 @@ def test_rule_fallback_is_not_cached_when_an_llm_is_configured(client, fake, mon
     _fake_llm(monkeypatch, json.dumps({"department": "ITS", "category": "Wi-Fi", "urgency": "low", "building_code": "LVL",
                                        "summary": "Wi-Fi keeps dropping", "is_safety": False, "confidence": 0.9, "reason": "Wi-Fi -> ITS"}))
     assert post(client, "wifi keeps dropping in Leavey").json()["draft"]["reason"] == "Wi-Fi -> ITS"
+
+
+def test_building_can_be_sent_separately_from_the_text(client, fake):
+    """Tommy learns the building in a follow-up message, so it is not in the student's sentence."""
+    draft = post(client, "the projector is broken", building="GFS", room="110", source="chat").json()["draft"]
+    assert (draft["building"], draft["building_id"], draft["room"]) == ("GFS", GFS, "110")
+    assert post(client, "the projector is broken", building="Leavey Library").json()["draft"]["building"] == "LVL"
+    assert post(client, "the projector is broken", building="somewhere").json()["draft"]["building"] is None
+    assert post(client, "the projector is broken", building="GFS", building_id=LVL).json()["draft"]["building"] == "LVL"
+
+
+def test_llm_that_rejects_temperature_is_retried_without_it(fake, monkeypatch):
+    """Some models behind the ChatGPT Edu proxy only accept the default temperature."""
+    import httpx
+    from openai import BadRequestError
+
+    seen = []
+    answer = json.dumps({"department": "ITS", "category": "Wi-Fi", "urgency": "low", "building_code": "LVL",
+                         "summary": "Wi-Fi keeps dropping", "is_safety": False, "confidence": 0.9, "reason": "Wi-Fi -> ITS"})
+
+    def create(**kwargs):
+        seen.append("temperature" in kwargs)
+        if "temperature" in kwargs:
+            response = httpx.Response(400, request=httpx.Request("POST", "http://llm.test/v1/chat/completions"))
+            raise BadRequestError("Unsupported parameter: temperature", response=response, body=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=answer))])
+
+    monkeypatch.setattr(classify_mod, "get_client", lambda: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+    monkeypatch.setattr(classify_mod, "_send_temperature", True)
+    monkeypatch.setattr(settings, "llm_model", "test-model")
+    monkeypatch.setattr(settings, "llm_api_key", "test-key")
+
+    assert classify("wifi keeps dropping in Leavey", BUILDINGS).engine == "llm"
+    assert classify("wifi is down in Leavey", BUILDINGS).engine == "llm"
+    assert seen == [True, False, False]  # asked with it once, then never again

@@ -9,12 +9,17 @@ Three layers, so a report is always sorted:
 2. The LLM does the real sorting and returns JSON.
 3. If the LLM is not configured, fails, or returns something unusable, keyword rules sort the
    report with a lower confidence, and the reason says so.
+
+Check which layer answers on this machine (run from services/ai):
+    python -m app.complaints.classify "it's so hot in GFS 213"
 """
 
 import json
 import logging
 import re
 from dataclasses import dataclass
+
+from openai import BadRequestError
 
 from app.core.config import settings
 from app.core.llm import get_client, model_name
@@ -155,22 +160,36 @@ def _extract_json(content: str) -> dict:
     return json.loads(content[start : end + 1])
 
 
+_send_temperature = True  # turned off for good the first time the endpoint rejects it
+
+
+def _complete(messages: list[dict]) -> str:
+    """One chat completion, as text. temperature=0 keeps answers repeatable, but some models
+    behind the ChatGPT Edu proxy only accept the default, so a 400 is retried once without it."""
+    global _send_temperature
+    create = get_client().chat.completions.create
+    if _send_temperature:
+        try:
+            reply = create(model=model_name(), messages=messages, timeout=LLM_TIMEOUT_S, temperature=0)
+            return reply.choices[0].message.content or ""
+        except BadRequestError as e:
+            log.warning("LLM rejected temperature=0, retrying with the default: %s", e)
+            _send_temperature = False
+    reply = create(model=model_name(), messages=messages, timeout=LLM_TIMEOUT_S)
+    return reply.choices[0].message.content or ""
+
+
 def _llm_classify(text: str, buildings: list[dict]) -> Classification:
     system = _SYSTEM.format(
         departments=", ".join(DEPARTMENTS),
         categories=", ".join(CATEGORIES),
         buildings="\n".join(f"- {b['code']}: {b.get('name') or ''}" for b in buildings) or "(none)",
     )
-    reply = get_client().chat.completions.create(
-        model=model_name(),
-        temperature=0,
-        timeout=LLM_TIMEOUT_S,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": f"Report:\n<report>\n{text}\n</report>"},
-        ],
-    )
-    data = _extract_json(reply.choices[0].message.content or "")
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"Report:\n<report>\n{text}\n</report>"},
+    ]
+    data = _extract_json(_complete(messages))
 
     department = data.get("department")
     if department not in DEPARTMENTS:
@@ -285,3 +304,32 @@ def classify(text: str, buildings: list[dict]) -> Classification:
     if result.is_safety:
         result.department, result.category, result.urgency = "DPS", "safety", "safety"
     return result
+
+
+if __name__ == "__main__":
+    import sys
+
+    from app.complaints import store
+
+    try:
+        known_buildings = store.list_buildings()
+    except Exception as e:  # noqa: BLE001 - the check still works without Supabase
+        print(f"(no building list: {e})")
+        known_buildings = []
+    samples = sys.argv[1:] or [
+        "it's so hot in GFS 213",
+        "door lock battery dead in my dorm room",
+        "wifi keeps dropping in Leavey",
+        "the parking structure gate is stuck open",
+        "I smell gas in SAL 101",
+    ]
+    print(f"LLM: model={settings.llm_model or '(not set)'} base_url={settings.llm_base_url or '(default)'}\n")
+    engines = set()
+    for sample in samples:
+        r = classify(sample, known_buildings)
+        engines.add(r.engine)
+        where = " ".join(x for x in (r.building_code, r.room) if x) or "-"
+        print(f"[{r.engine:<5}] {r.department:<14} {r.category:<12} {r.urgency:<6} {where:<8} {r.confidence:.2f}  {sample}")
+        print(f"         summary: {r.summary}\n         reason:  {r.reason}")
+    if "rules" in engines:
+        print("\nThe LLM did NOT answer every report (keyword rules did). Check LLM_BASE_URL / LLM_API_KEY / LLM_MODEL.")

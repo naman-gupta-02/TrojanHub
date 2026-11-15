@@ -280,7 +280,7 @@ real endpoint exists.
 ### P4 — Complaints & Admin
 | Method | Path | Body → Response |
 |---|---|---|
-| POST | `/complaints` | `{text, building_id?, room?, anonymous?: bool, confirm?: bool}` → `{draft:{department, category, urgency, building, room, summary}, duplicate_ticket?: {id, report_count}, safety?: {dps_phone, message}}`. With `confirm:true` → `{ticket, route_url}` |
+| POST | `/complaints` | `{text, building_id?, building?, room?, anonymous?: bool, confirm?: bool}` (`building` = code or name, for when it isn't in `text`; `building_id` wins) → `{draft:{department, category, urgency, building, room, summary}, duplicate_ticket?: {id, report_count}, safety?: {dps_phone, message}}`. With `confirm:true` → `{ticket, route_url}` |
 | GET | `/complaints/mine` | → user's complaints + ticket status |
 | POST | `/tickets/{id}/upvote` | → `{report_count}` |
 | GET | `/admin/complaints` | `?department=&building=&from=` → `[{logged_at, text, building, room, source, ai_department, ai_confidence, ai_reason, corrected_department, forwarded_to, forwarded_at, status, report_count}]` |
