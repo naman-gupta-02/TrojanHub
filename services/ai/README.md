@@ -73,7 +73,9 @@ Tommy is built to hide a slow model:
 - **Pre-fetch:** plain campus questions are searched before the first LLM call, so the model
   answers in one call instead of two.
 - **Answer cache:** the same first question on the same day replays instantly (1 hour, in
-  memory; `CHAT_CACHE=0` turns it off). Ask the demo questions once before a pitch to warm it.
+  memory; `CHAT_CACHE=0` turns it off). Before a pitch, run `python -m scripts.warm_demo`
+  (after starting the API and the LLM): the demo questions then answer in under a second.
+  Type them on stage exactly as listed in that script.
 - **Warm-up:** the embedding model loads at startup when `LLM_MODEL` is set (`CHAT_WARMUP=0` to skip).
 - Finished turns are saved to Supabase `chat_messages` when Supabase is configured.
 
