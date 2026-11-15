@@ -68,3 +68,27 @@ def test_offline_mock_development_still_works(monkeypatch):
     monkeypatch.setattr(settings, "supabase_url", "")
     r = TestClient(app).post("/api/events", json={"title": "Test event", "starts_at": "2026-11-20T02:00:00Z"})
     assert r.status_code == 201
+
+
+# Lost & Found (P2): posting and claiming need a sign-in even while the feature is mocked.
+def test_signed_out_cannot_post_found_item(live):
+    r = live.post("/api/items", data={"kind": "found", "description": "blue Hydro Flask", "location_text": "Leavey"})
+    assert r.status_code == 401
+    assert "Sign in" in r.json()["error"]["message"]
+
+
+def test_signed_out_cannot_claim_item(live):
+    assert live.post("/api/items/c0000000-0000-0000-0000-000000000002/claim").status_code == 401
+
+
+def test_signed_in_can_post_found_item(live, monkeypatch):
+    async def fake_verify(token):
+        return "11111111-1111-1111-1111-111111111111"
+
+    monkeypatch.setattr(auth, "_verify_with_supabase", fake_verify)
+    monkeypatch.setattr(settings, "use_mocks", True)
+    monkeypatch.setattr(settings, "real_features", "")  # mocked Lost & Found: no CLIP, no database
+    r = live.post("/api/items", data={"kind": "found", "description": "AirPods", "location_text": "Leavey"},
+                  headers={"Authorization": "Bearer good-token"})
+    assert r.status_code == 200, r.text
+    assert r.json()["tier"] == "valuable"

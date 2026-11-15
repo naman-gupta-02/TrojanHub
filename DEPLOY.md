@@ -43,7 +43,8 @@ import `p1/chatbot` for a test run.
 2. **Only signed-in students can write.** Posting events and deals, scanning or uploading
    flyers, voting, saving, checking in, changing alert settings, filing complaints and admin
    actions all need a USC sign-in. Everyone can browse events, deals, the feed and rewards
-   signed out.
+   signed out. Lost & Found (browsing too) is for signed-in students only: lost items are only
+   readable when signed in. The Admin link shows only for `dept_admin` / `usg_admin` accounts.
 3. **Scheduler and email.** Set `CRON_INLINE=true` in ONE place only (Replit or a laptop), and
    only add `RESEND_API_KEY` if the digest emails should really go out.
 
@@ -74,6 +75,16 @@ Replit changes its screens often. If the deploy settings don't pick up `.replit`
 - **Run:** `sh scripts/replit-start.sh`
 - **Port:** 3000 → external 80
 
+### If a publish fails
+
+- **`failed to push repl layer: io.Copy(".../.pythonlibs/..."): archive/tar: write too long`**:
+  a file in `.pythonlibs` changed while Replit was packing the app. `.replit` turns Replit's own
+  package installer off for this reason. Press **Stop** in the workspace (nothing should be
+  running or installing), then **Republish**. If it still fails, run `rm -rf .pythonlibs` in the
+  Shell and republish (the build reinstalls everything).
+- Real Lost & Found (`lostfound` in `REAL_FEATURES`) loads the CLIP image model: about 250 MB
+  more memory, and the first start downloads about 600 MB of model weights in the background.
+
 ## 3. Connect Supabase
 
 1. Supabase → **Authentication → URL Configuration:**
@@ -102,7 +113,7 @@ Replit changes its screens often. If the deploy settings don't pick up `.replit`
 | `SUPABASE_ANON_KEY` | yes | same anon key; the AI service uses it to check sign-ins |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | **AI service only.** Bypasses all security rules; never `NEXT_PUBLIC_` |
 | `USE_MOCKS` | yes | `true` until every feature is real |
-| `REAL_FEATURES` | yes | `complaints,admin,chat` (chat = Tommy only for signed-in students); names: chat, lostfound, events, notify, complaints, admin |
+| `REAL_FEATURES` | yes | `complaints,admin,chat,lostfound` (chat = Tommy only for signed-in students); names: chat, lostfound, events, notify, complaints, admin |
 | `CRON_SECRET` | yes | any long random string; protects the cron endpoints |
 | `CODEX_AUTH_JSON` | for Tommy | contents of `~/.codex/auth.json` (Naman's ChatGPT login); see Decisions |
 | `CODEX_MODEL` | no | default `gpt-5.6-luna` |
