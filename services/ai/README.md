@@ -21,9 +21,23 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ## Mock mode → real mode
 
 With `USE_MOCKS=true` every endpoint returns its JSON from `packages/shared/mocks/`. To build
-your feature, open your `routes.py`, find the `if settings.use_mocks:` branch, and write the real
-logic after it (where `raise not_built(...)` is). Keep the same response shape (`packages/shared/types.ts`).
-Flip `USE_MOCKS=false` when your endpoint is real.
+your feature, open your `routes.py`, find the `if settings.mock("<your feature>"):` branch, and
+write the real logic after it (where `raise not_built(...)` is). Keep the same response shape
+(`packages/shared/types.ts`).
+
+When your feature is real, add its name to `REAL_FEATURES` in `.env`. The others keep serving
+mocks:
+
+```
+USE_MOCKS=true
+REAL_FEATURES=complaints,admin      # names: chat, lostfound, events, notify, complaints, admin
+```
+
+- A real feature needs a signed-in student (a Supabase token); without one it returns 401.
+  Mocked features still work signed out, as the demo user.
+- `USE_MOCKS=false` makes everything real at once.
+- `GET /health` shows what is real right now.
+- New endpoint? Add its URL prefix to `_FEATURES` in `app/core/auth.py` (a test checks this).
 
 - Auth: add `user_id: str = Depends(get_user_id)`. With a Supabase token it's the real user; in mock mode without one it's a demo user.
 - Database: `from app.core.supabase import get_supabase` (service role, server only).

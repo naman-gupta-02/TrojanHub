@@ -65,7 +65,8 @@ sequenceDiagram
 1. **Contracts first (Phase 0).** Every endpoint's request and response types live in
    `packages/shared/types.ts`, with a mock JSON in `packages/shared/mocks/`.
 2. **P1 builds against mocks.** Until P2's real `/items` is up, Tommy's tool wrapper reads the
-   mock. Switching is one env flag: `USE_MOCKS=false`.
+   mock. Switching is one env flag: `USE_MOCKS=false`, or per feature with
+   `REAL_FEATURES=complaints,admin` while the rest stay mocked.
 3. **One wrapper per tool** in `services/ai/app/chat/tools/<feature>.py`. Each one only calls
    HTTP and maps fields, with no feature logic. If an owner changes their endpoint, only that file
    changes.
@@ -427,7 +428,7 @@ details match the source page exactly.
 - **Types first:** P4 generates `packages/shared/types.ts` from the schema (`supabase gen types`)
   at the end of Phase 0. API request and response types sit next to them.
 - **Env vars** (`.env.example`): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-  (AI service only), `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `USE_MOCKS`, `EMBED_MODEL`, `RESEND_API_KEY`,
+  (AI service only), `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `USE_MOCKS`, `REAL_FEATURES`, `EMBED_MODEL`, `RESEND_API_KEY`,
   `CRON_SECRET`, `EXPO_PUBLIC_API_URL`, `NEXT_PUBLIC_API_URL`.
 - **Dates:** stored as UTC `timestamptz`, shown in America/Los_Angeles.
 - **Errors:** `{error: {code, message}}` with the matching HTTP status.

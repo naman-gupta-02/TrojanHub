@@ -52,7 +52,8 @@ async def validation_error(_: Request, exc: RequestValidationError) -> JSONRespo
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "use_mocks": settings.use_mocks}
+    real = [f.strip() for f in settings.real_features.split(",") if f.strip()]
+    return {"ok": True, "use_mocks": settings.use_mocks, "real_features": real if settings.use_mocks else ["all"]}
 
 
 for router in (

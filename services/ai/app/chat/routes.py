@@ -118,6 +118,7 @@ async def chat_confirm(req: ConfirmRequest, user_id: str = Depends(get_user_id))
         return {"action_id": req.action_id, "status": "cancelled", "message": "No problem, I didn't do anything."}
 
     status, result = await run_confirmed(action, req.edits)
-    message = result.get("message") or ("Done!" if status == "done" else "That didn't work.")
+    message = (result.get("message") or (result.get("error") or {}).get("message")
+               or ("Done!" if status == "done" else "That didn't work."))
     store.remember(req.session_id, {"role": "assistant", "content": f"({action.tool} confirmed: {message})"})
     return {"action_id": req.action_id, "status": status, "message": message, "result": result}

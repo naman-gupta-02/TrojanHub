@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     llm_vision_model: str = ""
 
     use_mocks: bool = True
+    # Features that are real even while USE_MOCKS=true, comma-separated. Names: chat, lostfound,
+    # events, notify, complaints, admin. Lets one finished feature go live while the rest stay mocked.
+    real_features: str = ""
     embed_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     cors_origins: str = "http://localhost:3000,http://localhost:8081"
 
@@ -38,6 +41,12 @@ class Settings(BaseSettings):
     # Shown for safety complaints instead of a ticket. UPC emergency line, copied from
     # https://dps.usc.edu/contact/ on 2026-11-14. Override with DPS_EMERGENCY_PHONE.
     dps_emergency_phone: str = "213-740-4321"
+
+    def mock(self, feature: str) -> bool:
+        """Should `feature` serve mocks? USE_MOCKS=false -> nothing is mocked.
+        USE_MOCKS=true -> everything is, except the features listed in REAL_FEATURES."""
+        real = {f.strip().lower() for f in self.real_features.split(",") if f.strip()}
+        return self.use_mocks and feature not in real
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -9,7 +9,7 @@ GET  /rewards/progress
 GET  /feed
 
 Mock mode serves packages/shared/mocks/{flyers_scan,events_search,deals_search,...}.json.
-Replace each `if settings.use_mocks` branch with the real logic; keep the shapes from types.ts.
+Replace each `if settings.mock("events")` branch with the real logic; keep the shapes from types.ts.
 """
 
 from datetime import datetime
@@ -38,7 +38,7 @@ class SaveEventRequest(BaseModel):
 
 @router.post("/flyers/scan")
 async def scan_flyer(req: FlyerScanRequest, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("events"):
         return load_mock("flyers_scan")
     raise not_built(OWNER)
 
@@ -53,7 +53,7 @@ async def search_events(
     freebie: bool | None = None,
     user_id: str = Depends(get_user_id),
 ) -> dict:
-    if settings.use_mocks:
+    if settings.mock("events"):
         events = load_mock("events_search")["events"]
         if q:
             events = [e for e in events if q.lower() in e["title"].lower() or q.lower() in (e["freebie_desc"] or "").lower()]
@@ -69,7 +69,7 @@ async def search_events(
 
 @router.get("/deals/search")
 async def search_deals(q: str | None = None, active: bool = True, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("events"):
         deals = load_mock("deals_search")["deals"]
         if q:
             deals = [d for d in deals if q.lower() in d["title"].lower()]
@@ -79,7 +79,7 @@ async def search_deals(q: str | None = None, active: bool = True, user_id: str =
 
 @router.post("/events/{event_id}/save")
 async def save_event(event_id: str, req: SaveEventRequest | None = None, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("events"):
         event = _mock_event(event_id)
         return {"saved": True, "ics_url": f"/api/events/{event_id}/ics", "register_url": event.get("register_url")}
     raise not_built(OWNER)
@@ -88,7 +88,7 @@ async def save_event(event_id: str, req: SaveEventRequest | None = None, user_id
 @router.get("/events/{event_id}/ics")
 async def event_ics(event_id: str) -> Response:
     """Public (no auth) so calendar apps can open the link directly."""
-    if settings.use_mocks:
+    if settings.mock("events"):
         return Response(_ics(_mock_event(event_id)), media_type="text/calendar",
                         headers={"Content-Disposition": f'attachment; filename="{event_id}.ics"'})
     raise not_built(OWNER)
@@ -96,14 +96,14 @@ async def event_ics(event_id: str) -> Response:
 
 @router.get("/rewards/progress")
 async def rewards_progress(user_id: str = Depends(get_user_id)) -> list:
-    if settings.use_mocks:
+    if settings.mock("events"):
         return load_mock("rewards_progress")
     raise not_built(OWNER)
 
 
 @router.get("/feed")
 async def feed(user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("events"):
         return load_mock("feed")
     raise not_built(OWNER)
 

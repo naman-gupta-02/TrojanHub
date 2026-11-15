@@ -32,7 +32,10 @@ async def call(
     body = r.json() if "json" in r.headers.get("content-type", "") else r.text
     if r.status_code >= 400:
         err = body.get("error") if isinstance(body, dict) else {"code": f"http_{r.status_code}", "message": str(body)[:200]}
-        return {"error": err, "status": r.status_code}
+        out = {"error": err, "status": r.status_code}
+        if r.status_code == 401:
+            out["note"] = "The student is not signed in. Ask them to sign in with their @usc.edu email, then try again."
+        return out
     return body
 
 

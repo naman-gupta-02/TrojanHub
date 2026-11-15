@@ -5,7 +5,7 @@ GET  /items/search             ?q=&building_id=
 POST /items/search-by-image    multipart {photo}
 POST /items/{id}/claim
 
-Mock mode serves packages/shared/mocks/items_*.json. Replace each `if settings.use_mocks` branch
+Mock mode serves packages/shared/mocks/items_*.json. Replace each `if settings.mock("lostfound")` branch
 with the real logic (clip.py, tiers.py) when it's ready; keep the response shapes from types.ts.
 """
 
@@ -34,7 +34,7 @@ async def create_item(
     location_text: str | None = Form(None),
     user_id: str = Depends(get_user_id),
 ) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         valuable = bool(description and _VALUABLE_WORDS.search(description.lower()))
         return load_mock("items_create_valuable" if valuable else "items_create")
     raise not_built(OWNER)
@@ -42,20 +42,20 @@ async def create_item(
 
 @router.get("/items/search")
 async def search_items(q: str, building_id: str | None = None, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         return load_mock("items_search")
     raise not_built(OWNER)
 
 
 @router.post("/items/search-by-image")
 async def search_items_by_image(photo: UploadFile = File(...), user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         return load_mock("items_search")
     raise not_built(OWNER)
 
 
 @router.post("/items/{item_id}/claim")
 async def claim_item(item_id: str, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         return load_mock("items_claim_valuable" if item_id == _VALUABLE_ITEM_ID else "items_claim")
     raise not_built(OWNER)

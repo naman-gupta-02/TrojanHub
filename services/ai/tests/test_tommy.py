@@ -284,8 +284,11 @@ def test_confirm_cards_are_never_cached(client, llm):
     llm(tool_step("log_complaint", text="it's so hot in GFS 213"), text_step("Tap Confirm."))
     a = next(e for e in chat(client, "it's so hot in GFS 213", session="n1") if e["type"] == "confirm")
     fake = llm(tool_step("log_complaint", text="it's so hot in GFS 213"), text_step("Tap Confirm."))
-    b = next(e for e in chat(client, "it's so hot in GFS 213", session="n2") if e["type"] == "confirm")
-    assert len(fake.calls) == 2 and a["action_id"] != b["action_id"]
+    events = chat(client, "it's so hot in GFS 213", session="n2")
+    b = next(e for e in events if e["type"] == "confirm")
+    assert a["action_id"] != b["action_id"]
+    # one LLM call only: after a confirm card Tommy says a fixed line instead of asking the LLM again
+    assert len(fake.calls) == 1 and answer_of(events) == agent.CONFIRM_LINE
 
 
 def test_follow_up_questions_skip_the_cache(client, llm):

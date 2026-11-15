@@ -205,7 +205,7 @@ def _upvote(ticket_id: str) -> dict:
 # ---------------------------------------------------------------------------
 @router.post("/complaints")
 async def create_complaint(req: ComplaintRequest, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("complaints"):
         if _SAFETY_WORDS.search(req.text.lower()):
             return load_mock("complaints_safety")  # never creates a ticket
         return load_mock("complaints_confirm" if req.confirm else "complaints_draft")
@@ -220,13 +220,13 @@ async def create_complaint(req: ComplaintRequest, user_id: str = Depends(get_use
 
 @router.get("/complaints/mine")
 async def my_complaints(user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("complaints"):
         return load_mock("complaints_mine")
     return await _run(_my_complaints, user_id)
 
 
 @router.post("/tickets/{ticket_id}/upvote")
 async def upvote_ticket(ticket_id: str, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("complaints"):
         return load_mock("tickets_upvote")
     return await _run(_upvote, ticket_id)

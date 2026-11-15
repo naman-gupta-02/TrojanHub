@@ -130,6 +130,12 @@ class FakeStore:
                 t.update(fields)
 
 
+@pytest.fixture(autouse=True)
+def no_real_features_from_env(monkeypatch):
+    """REAL_FEATURES in a developer's .env must not change what the tests exercise."""
+    monkeypatch.setattr(settings, "real_features", "")
+
+
 @pytest.fixture
 def fake(monkeypatch):
     """Real mode (USE_MOCKS=false) with a fake DB, fake embeddings and no LLM (keyword rules)."""

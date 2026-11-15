@@ -18,13 +18,13 @@ OWNER = "P3 Parnavi"
 
 @router.post("/notify/daily-digest")
 async def daily_digest() -> dict:
-    if settings.use_mocks:
+    if settings.mock("notify"):
         return {"sent": 0, "skipped_reason": "mock mode: nothing sent"}
     raise not_built(OWNER)
 
 
 @router.post("/notify/reminders")
 async def reminders() -> dict:
-    if settings.use_mocks:
+    if settings.mock("notify"):
         return {"sent": 0, "skipped_reason": "mock mode: nothing sent"}
     raise not_built(OWNER)

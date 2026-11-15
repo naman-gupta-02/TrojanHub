@@ -39,6 +39,8 @@ _ACTION = re.compile(r"\b(free|freebie|freebies|event|events|deal|deals|lost|fou
 def should_prefetch(message: str, has_photo: bool) -> bool:
     return not has_photo and bool(_QUESTION.search(message)) and not _ACTION.search(message)
 SORRY = "Sorry, I'm having trouble thinking right now. Please try again in a moment."
+# Said after a confirm card instead of a second LLM call (saves one slow round trip).
+CONFIRM_LINE = "I drafted that for you. Check the card below, then tap Confirm to send it, or Edit to change something."
 
 
 def _today() -> str:
@@ -154,6 +156,7 @@ async def run_turn(
                 "content": text or None,
                 "tool_calls": [{"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}} for c in calls],
             })
+            cards = 0
             for c in calls:
                 try:
                     args = json.loads(c["arguments"] or "{}")
@@ -164,8 +167,16 @@ async def run_turn(
                 yield out({"type": "tool_result", "id": c["id"], "name": c["name"], "result": outcome.result})
                 if outcome.confirm:
                     cacheable = False  # confirm cards are tied to this session
+                    cards += 1
                     yield outcome.confirm
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(outcome.result, ensure_ascii=False)})
+            if cards == len(calls):
+                # Every tool call became a confirm card: the card says it all, so skip the
+                # extra LLM call that would only tell the student to tap Confirm.
+                if not text.strip():
+                    answer += CONFIRM_LINE
+                    yield {"type": "token", "text": CONFIRM_LINE}
+                break
     except Exception:  # noqa: BLE001 - never leave the UI hanging mid-stream
         log.exception("chat turn failed")
         cacheable = False

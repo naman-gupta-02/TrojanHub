@@ -196,13 +196,13 @@ def _csv(rows: list[dict]) -> Response:
 async def admin_complaints(
     department: str | None = None, building: str | None = None, urgency: str | None = None, from_: str | None = Query(None, alias="from")
 ) -> list:
-    rows = load_mock("admin_complaints") if settings.use_mocks else await _run(_rows, from_)
+    rows = load_mock("admin_complaints") if settings.mock("admin") else await _run(_rows, from_)
     return _filter(rows, department, building, urgency)
 
 
 @router.patch("/admin/complaints/{complaint_id}")
 async def patch_complaint(complaint_id: str, patch: ComplaintPatch) -> dict:
-    if settings.use_mocks:
+    if settings.mock("admin"):
         for row in load_mock("admin_complaints"):
             if row["id"] == complaint_id:
                 return {**row, **patch.model_dump(exclude_none=True)}
@@ -212,11 +212,11 @@ async def patch_complaint(complaint_id: str, patch: ComplaintPatch) -> dict:
 
 @router.get("/admin/stats")
 async def admin_stats() -> dict:
-    if settings.use_mocks:
+    if settings.mock("admin"):
         return load_mock("admin_stats")
     return _stats(await _run(_rows))
 
 
 @router.get("/admin/tickets.csv")
 async def tickets_csv() -> Response:
-    return _csv(load_mock("admin_complaints") if settings.use_mocks else await _run(_rows))
+    return _csv(load_mock("admin_complaints") if settings.mock("admin") else await _run(_rows))
