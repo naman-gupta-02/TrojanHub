@@ -4,7 +4,14 @@
 set -e
 cd "$(dirname "$0")/.."
 
-export API_PROXY_TARGET="${API_PROXY_TARGET:-http://127.0.0.1:8000}"
+AI_PORT="${AI_PORT:-8000}"
+export API_PROXY_TARGET="${API_PROXY_TARGET:-http://127.0.0.1:$AI_PORT}"
+export NEXT_PUBLIC_API_URL=/
+# The website needs the PUBLIC Supabase URL + anon key. Fall back to the AI service's copies
+# (same public values) so a missing NEXT_PUBLIC_* secret can't silently break sign-in.
+# The service role key is never given to the website.
+export NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-$SUPABASE_URL}"
+export NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-$SUPABASE_ANON_KEY}"
 PIDS=""
 trap 'kill $PIDS 2>/dev/null' EXIT INT TERM
 
@@ -23,19 +30,34 @@ if [ -n "$CODEX_AUTH_JSON" ] && [ -z "$LLM_API_KEY" ]; then
   echo "LLM: Codex shim (ChatGPT login), model $LLM_MODEL"
 fi
 
-(cd services/ai && exec python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+(cd services/ai && exec python -m uvicorn app.main:app --host 127.0.0.1 --port "$AI_PORT" \
   --proxy-headers --forwarded-allow-ips='*') &
 AI_PID=$!
 PIDS="$PIDS $AI_PID"
 
 # Wait for the AI service (the embedding model takes a few seconds to load).
 i=0
-until curl -fs http://127.0.0.1:8000/health >/dev/null 2>&1; do
+until curl -fs "http://127.0.0.1:$AI_PORT/health" >/dev/null 2>&1; do
   i=$((i + 1))
   if [ "$i" -gt 120 ]; then echo "AI service did not start"; exit 1; fi
   kill -0 $AI_PID 2>/dev/null || { echo "AI service crashed"; exit 1; }
   sleep 1
 done
 echo "AI service is up"
+
+# Next.js bakes NEXT_PUBLIC_* values in at build time. Replit's build step may not get the
+# Secrets, so rebuild here whenever the website was built with different settings.
+# Only a hash of the settings is stored, never the values.
+fingerprint=$(printf '%s|%s|%s|%s' "$NEXT_PUBLIC_SUPABASE_URL" "$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+  "$NEXT_PUBLIC_API_URL" "$API_PROXY_TARGET" | sha256sum 2>/dev/null || printf '%s|%s|%s|%s' \
+  "$NEXT_PUBLIC_SUPABASE_URL" "$NEXT_PUBLIC_SUPABASE_ANON_KEY" "$NEXT_PUBLIC_API_URL" "$API_PROXY_TARGET" | shasum -a 256)
+fingerprint=${fingerprint%% *}
+marker=apps/web/.next/trojanhub-build-settings
+if [ ! -f apps/web/.next/BUILD_ID ] || [ "$(cat "$marker" 2>/dev/null)" != "$fingerprint" ]; then
+  echo "Building the website with this deployment's settings..."
+  npm --workspace apps/web run build
+  printf '%s' "$fingerprint" > "$marker"
+fi
+[ -n "$NEXT_PUBLIC_SUPABASE_URL" ] || echo "WARNING: no Supabase URL for the website: sign-in will be off"
 
 exec npm --workspace apps/web run start -- --hostname 0.0.0.0 --port "${PORT:-3000}"
