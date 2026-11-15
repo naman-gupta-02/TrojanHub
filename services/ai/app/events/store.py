@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from app.core.supabase import get_supabase
+from app.events import categories
 from app.events.dates import has_ended, iso, la_day_bounds, la_today, now_utc, parse_ts
 
 EVENT_SELECT = "*, orgs(name, verified)"
@@ -36,7 +37,11 @@ _FILLER = set(
     "i in is list me near now of on or show some something the there this to usc what whats where".split()
 )
 # "free food", "freebies", "swag": that's the freebie filter, not text to look for
-_FREEBIE_PHRASE = re.compile(r"\b(free\s+(food|stuff|things)|freebies?|giveaways?|swag|merch)\b", re.I)
+_FREEBIE_PHRASE = re.compile(
+    r"\b(free\s+(food|stuff|things|drinks?|snacks?|refreshments?|meals?)|freebies?|giveaways?|swag|merch)\b", re.I
+)
+# "free food", "free drinks": events that give away something to eat or drink (the "Free food" chip)
+_FOOD_PHRASE = re.compile(r"\bfree\s+(food|drinks?|snacks?|refreshments?|meals?)\b", re.I)
 _TIME_WORDS = {"today": 0, "tonight": 0, "tomorrow": 1}
 
 
@@ -61,6 +66,8 @@ def parse_query(q: str | None) -> tuple[str | None, bool, tuple[datetime, dateti
             break
     if when is None and "week" in words:
         start, _ = la_day_bounds()
+        if "next" in words:  # "next week": the 7 days after this one
+            start += timedelta(days=7)
         when = (start, start + timedelta(days=7))
     return q, freebie, when
 
@@ -88,7 +95,12 @@ def search_events(
     freebie: bool | None = None,
     limit: int = 200,
 ) -> list[dict]:
-    """Published events, soonest first. Events that already ended are always left out."""
+    """Published events, soonest first. Events that already ended are always left out.
+
+    `category` is a chip: the event's own category, or one its text fits (categories.matches).
+    """
+    if not category and q and _FOOD_PHRASE.search(q):
+        category = "free_food"
     q, wants_freebie, when = parse_query(q)
     if wants_freebie and freebie is None:
         freebie = True
@@ -105,8 +117,6 @@ def search_events(
         query = query.gte("starts_at", iso(now_utc().replace(microsecond=0) - _TWO_HOURS))
     if end:
         query = query.lt("starts_at", iso(end))
-    if category:
-        query = query.eq("category", category)
     if free is not None:
         query = query.eq("is_free", free)
     if freebie is not None:
@@ -117,6 +127,7 @@ def search_events(
             f"title.ilike.{like},description.ilike.{like},location_text.ilike.{like},freebie_desc.ilike.{like}"
         )
     rows = [_event(r) for r in _rows(query.order("starts_at").limit(limit).execute())]
+    rows = [r for r in rows if categories.matches(r, category)]
     # never list events that already ended, even when `start` is in the past ("this week" on a Friday)
     now = now_utc()
     return [r for r in rows if not has_ended(r["starts_at"], r["ends_at"], now)]

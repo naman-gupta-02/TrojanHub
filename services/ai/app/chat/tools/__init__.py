@@ -54,9 +54,14 @@ TOOLS: list[dict] = [
         "search_events",
         "Search campus and org events.",
         {
-            "query": {"type": "string"},
-            "date_range": {"type": "string", "description": "'today', 'this_week', or 'YYYY-MM-DD/YYYY-MM-DD'"},
-            "free_only": {"type": "boolean"},
+            "query": {"type": "string", "description": "What the student asked for, e.g. 'free pizza', 'career fair'"},
+            "date_range": {"type": "string",
+                           "description": "'today', 'this_week', 'next_week', or 'YYYY-MM-DD/YYYY-MM-DD'"},
+            "category": {"type": "string",
+                         "enum": ["free_food", "cultural", "career", "social", "academic", "sports"],
+                         "description": "free_food = any event giving away food or drinks (snacks, coffee, hot "
+                                        "chocolate, pizza…). Also matches events whose text fits the category."},
+            "free_only": {"type": "boolean", "description": "Only events with free entry"},
             "freebie_only": {"type": "boolean", "description": "Only events that give away food or merch"},
         },
         ["query"],

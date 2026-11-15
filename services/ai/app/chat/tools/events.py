@@ -16,7 +16,7 @@ def _now() -> datetime:
 
 
 def _date_range(spec: str | None) -> tuple[str | None, str | None]:
-    """'today' | 'this_week' | 'YYYY-MM-DD/YYYY-MM-DD' -> UTC ISO bounds (Pacific days)."""
+    """'today' | 'this_week' | 'next_week' | 'YYYY-MM-DD/YYYY-MM-DD' -> UTC ISO bounds (Pacific days)."""
     if not spec:
         return None, None
     today = _now().date()
@@ -24,6 +24,8 @@ def _date_range(spec: str | None) -> tuple[str | None, str | None]:
         start, end = today, today
     elif spec == "this_week":
         start, end = today, today + timedelta(days=6)
+    elif spec == "next_week":
+        start, end = today + timedelta(days=7), today + timedelta(days=13)
     elif "/" in spec:
         a, b = spec.split("/", 1)
         start, end = datetime.fromisoformat(a).date(), datetime.fromisoformat(b).date()
@@ -37,15 +39,36 @@ def _date_range(spec: str | None) -> tuple[str | None, str | None]:
 # Words that say "something free on campus" but don't narrow the search any further. "Swag",
 # "merch", "giveaways"… mean "has a freebie" (the freebie filter covers them); the events
 # themselves say what it is ("Free t-shirts").
-_GENERIC = set("a an any anything are at around campus deal deals discount discounts event events food for free freebie freebies "
-               "going happening i in is me near now of on or student students stuff that the there this to today tonight usc week what whats "
+_GENERIC = set("a an any anything are at around campus coming deal deals discount discounts event events for free freebie freebies "
+               "going happening i in is later me near next now of on or soon student students stuff that the there this to today "
+               "tomorrow tonight upcoming usc week weekend what whats "
                "swag swags merch merchandise giveaway giveaways goodies gift gifts prize prizes".split())
+
+# Words that name a category chip rather than something to look for in the text. "free drinks" ->
+# the "Free food" chip, which also covers events whose freebie is food or a drink (hot chocolate).
+_CATEGORY_WORDS = {
+    **dict.fromkeys("food foods drink drinks snack snacks refreshment refreshments beverage beverages meal meals eat "
+                    "eats".split(), "free_food"),
+    **dict.fromkeys("cultural culture cultures".split(), "cultural"),
+    **dict.fromkeys("social socials".split(), "social"),
+    **dict.fromkeys("academic academics".split(), "academic"),
+    **dict.fromkeys("sports sport sporting athletic athletics".split(), "sports"),
+}
+
+
+def _words(query: str | None) -> list[str]:
+    return [w.strip(".,!") for w in (query or "").lower().replace("?", " ").replace("'", "").split()]
 
 
 def specific_terms(query: str | None) -> str | None:
     """'free food on campus today' -> None (the filters already say that); 'free pizza' -> 'pizza'."""
-    words = [w for w in (query or "").lower().replace("?", " ").replace("'", "").split() if w not in _GENERIC]
+    words = [w for w in _words(query) if w and w not in _GENERIC and w not in _CATEGORY_WORDS]
     return " ".join(words) or None
+
+
+def category_from(query: str | None) -> str | None:
+    """'upcoming cultural events' -> 'cultural'; 'free drinks' -> 'free_food'; else None."""
+    return next((_CATEGORY_WORDS[w] for w in _words(query) if w in _CATEGORY_WORDS), None)
 
 
 def _event(e: dict) -> dict:
@@ -61,8 +84,9 @@ def _event(e: dict) -> dict:
 async def search_events(args: dict, ctx: ToolContext) -> ToolOutcome:
     lo, hi = _date_range(args.get("date_range"))
     q = specific_terms(args.get("query"))  # the filters carry "free" / "today"; keep only real keywords
+    category = args.get("category") or category_from(args.get("query"))
     res = await call("GET", "/events/search", ctx.auth_header, params={
-        "q": q, "from": lo, "to": hi,
+        "q": q, "from": lo, "to": hi, "category": category,
         "free": "true" if args.get("free_only") else None, "freebie": "true" if args.get("freebie_only") else None,
     })
     if "error" in res:

@@ -39,7 +39,7 @@ from app.core.auth import ADMIN_ROLES, get_user_id, require_signed_in
 from app.core.config import settings
 from app.core.mocks import load_mock
 from app.core.supabase import get_supabase
-from app.events import dedupe, feed as feed_builder, flyer, ics, perks, rewards, store
+from app.events import categories, dedupe, feed as feed_builder, flyer, ics, perks, rewards, store
 from app.events.dates import has_ended, iso, now_utc, parse_ts
 from app.events.settings import db_live, llm_live, signing_secret
 
@@ -253,7 +253,7 @@ def search_events(
         if q:
             events = [e for e in events if q.lower() in e["title"].lower() or q.lower() in (e["freebie_desc"] or "").lower()]
         if category:
-            events = [e for e in events if e["category"] == category]
+            events = [e for e in events if categories.matches(e, category)]
         if free is not None:
             events = [e for e in events if e["is_free"] == free]
         if freebie is not None:

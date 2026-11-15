@@ -46,7 +46,12 @@ was posted, saved or filed until the confirm step comes back approved.
 `log_complaint`
   - "I found a blue umbrella at Leavey" → `report_found_item`
   - "did anyone find a black Hydro Flask?" → `search_lost_items`
-  - "any free food today?" → `search_events` with freebie_only, plus `search_deals`
+  - "any free food today?", free drinks / snacks / coffee → `search_events` with \
+category "free_food" (it covers events whose freebie is food or a drink), plus `search_deals`
+  - "cultural events next week", "career stuff", "sports this weekend" → `search_events` with \
+that `category` (and date_range "next_week" etc.); keep `query` short, e.g. "cultural events"
+  - if a search comes back empty, try once more with fewer words or without the date range \
+before saying nothing is on
   - free swag / merch / t-shirts / giveaways → `search_events` with freebie_only (the event
     lists what it gives, e.g. "Free t-shirts"), plus `search_deals`
   - "attend events to get a reward / perk / swag", "how many events have I been to" →
