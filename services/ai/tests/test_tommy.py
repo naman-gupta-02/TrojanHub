@@ -13,7 +13,7 @@ from types import SimpleNamespace as NS
 import pytest
 from fastapi.testclient import TestClient
 
-from app.chat import agent
+from app.chat import agent, store
 from app.core.config import settings
 from app.main import app
 from app.rag.index import local_index
@@ -66,9 +66,10 @@ class FakeLLM:
 
 
 @pytest.fixture(autouse=True)
-def local_index_only(monkeypatch):
-    """Tests use the local RAG index, never the team's Supabase project."""
+def isolated(monkeypatch):
+    """Tests use the local RAG index, never the team's Supabase project, and start with no cache."""
     monkeypatch.setattr(settings, "supabase_url", "")
+    store.cache_clear()
 
 
 @pytest.fixture
@@ -237,3 +238,88 @@ def test_flyer_photo_goes_to_flyer_scan(client, llm):
     events = chat(client, "add this event", session="fl1", image_url="data:image/png;base64,iVBORw0KGgo=")
     card = next(e for e in events if e["type"] == "confirm")
     assert card["tool"] == "scan_flyer" and "Diwali" in card["summary"]
+
+
+# ---------------------------------------------------------------------------
+# Speed: pre-fetch and answer cache
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(("message", "expected"), [
+    ("when is the food pantry open?", True),
+    ("What's the DPS emergency number?", True),
+    ("how do I report a phishing email", False),  # "report" may be an action: let the model decide
+    ("any free food today?", False),
+    ("did anyone find a black hydro flask?", False),
+    ("it's so hot in GFS 213", False),
+    ("I found a blue umbrella at Leavey", False),
+    ("hello", False),
+])
+def test_should_prefetch(message, expected):
+    assert agent.should_prefetch(message, has_photo=False) is expected
+    assert agent.should_prefetch(message, has_photo=True) is False
+
+
+@needs_index
+def test_prefetch_answers_in_one_llm_call(client, llm):
+    fake = llm(text_step("It's open Tuesdays, Wednesdays, & Thursdays, 10:00 AM – 2:00 PM [3]."))
+    events = chat(client, "when is the food pantry open?")
+    assert [e["type"] for e in events][:2] == ["tool_call", "tool_result"]  # searched before the LLM
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["messages"][-1]["role"] == "tool"  # the LLM saw the sources right away
+    assert any(e["type"] == "sources" for e in events)
+
+
+@needs_index
+def test_same_first_question_replays_from_cache(client, llm):
+    llm(text_step("It's open Tuesdays, Wednesdays, & Thursdays, 10:00 AM – 2:00 PM [3]."))
+    first = chat(client, "When is the food pantry open?", session="cache-a")
+    down = llm(explode=True)  # the LLM is now unreachable
+    second = chat(client, "when is the food pantry open", session="cache-b")
+    assert len(down.calls) == 0
+    assert answer_of(second) == answer_of(first)
+    assert second[-1] == {"type": "done", "session_id": "cache-b"}
+    assert any(e["type"] == "sources" for e in second)
+
+
+def test_confirm_cards_are_never_cached(client, llm):
+    llm(tool_step("log_complaint", text="it's so hot in GFS 213"), text_step("Tap Confirm."))
+    a = next(e for e in chat(client, "it's so hot in GFS 213", session="n1") if e["type"] == "confirm")
+    fake = llm(tool_step("log_complaint", text="it's so hot in GFS 213"), text_step("Tap Confirm."))
+    b = next(e for e in chat(client, "it's so hot in GFS 213", session="n2") if e["type"] == "confirm")
+    assert len(fake.calls) == 2 and a["action_id"] != b["action_id"]
+
+
+def test_follow_up_questions_skip_the_cache(client, llm):
+    llm(text_step("Hi!"))
+    chat(client, "hello", session="f1")
+    fake = llm(text_step("Hi again!"))
+    assert answer_of(chat(client, "hello", session="f1")).strip() == "Hi again!"  # has history now
+    assert len(fake.calls) == 1
+
+
+def test_mock_flyer_photo_without_llm(client, monkeypatch):
+    monkeypatch.setattr(settings, "llm_model", "")
+    events = chat(client, "add this", session="mf", image_url="data:image/png;base64,iVBORw0KGgo=")
+    card = next(e for e in events if e["type"] == "confirm")
+    assert card["action_id"] == "act_mock_flyer" and card["tool"] == "scan_flyer"
+    body = client.post("/api/chat/confirm", json={"session_id": "mf", "action_id": card["action_id"], "approved": True}).json()
+    assert body["status"] == "done" and body["message"].startswith("Added!")
+
+
+@pytest.mark.parametrize(("query", "kept"), [
+    ("free food on campus today", None),
+    ("any free food", None),
+    ("free pizza tonight", "pizza"),
+    ("career fair this week", "career fair"),
+    (None, None),
+])
+def test_generic_words_are_not_used_as_keywords(query, kept):
+    from app.chat.tools.events import specific_terms
+
+    assert specific_terms(query) == kept
+
+
+def test_free_food_on_campus_finds_the_freebies(client, llm):
+    llm(tool_step("search_events", query="free food on campus", date_range="today", freebie_only=True),
+        tool_step("search_deals", query="free food on campus today"), text_step("Free boba!"))
+    results = [e["result"] for e in chat(client, "any free food on campus today?") if e["type"] == "tool_result"]
+    assert results[0]["events"] and results[1]["deals"]

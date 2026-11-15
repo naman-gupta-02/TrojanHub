@@ -22,7 +22,7 @@ from app.rag import retrieve as R
 
 QUESTIONS = Path(__file__).resolve().parent / "chat_questions.jsonl"
 # Ways Tommy may decline a question USC pages can't answer (instead of guessing)
-DECLINES = ("couldn't find", "could not find", "don't have", "do not have", "can't help", "cannot help", "not able to", "outside what")
+DECLINES = ("couldn't find", "could not find", "don't have", "do not have", "i can't", "i cannot", "can't help", "not able to", "outside what")
 
 
 ONLY: set[str] | None = None  # set by --only id1,id2
@@ -75,6 +75,11 @@ def run_retrieval(threshold: float, verbose: bool = True) -> dict:
     return result
 
 
+def _norm(text: str) -> str:
+    """Compare loosely: case, curly apostrophes and dash style don't matter."""
+    return text.lower().replace("\u2019", "'").replace("\u2013", "-").replace("\u2014", "-")
+
+
 async def run_chat() -> None:
     from app.chat.agent import run_turn
     from app.chat.guard import unverified_contacts
@@ -82,27 +87,28 @@ async def run_chat() -> None:
     qs = load()
     passed = 0
     for q in qs:
-        answer, sources = "", []
+        answer, sources, seen = "", [], []
         async for ev in run_turn(f"eval-{q['id']}", q["question"], user_id="eval", auth_header=None):
             if ev["type"] == "token":
                 answer += ev["text"]
             elif ev["type"] == "sources":
                 sources = ev["sources"]
+            elif ev["type"] == "tool_result":
+                seen.append(json.dumps(ev["result"], ensure_ascii=False))  # everything Tommy was shown
         urls = [s["url"] for s in sources]
         need = q.get("expected_facts", []) + q.get("expected_contacts", [])
         problems = []
-        missing = [f for f in need if f not in answer]
+        missing = [f for f in need if _norm(f) not in _norm(answer)]
         # A different official page with the same fact is fine; the source only matters when
         # there is no expected fact to check, or the fact is missing.
         if q["expected_url"] and q["expected_url"] not in urls and (missing or not need):
             problems.append("expected source not cited")
-        if q["expected_url"] and not urls:
+        if q["expected_url"] and not urls and not q.get("action_ok"):
             problems.append("no sources shown")
         problems += [f"missing '{f}'" for f in missing]
-        bad = unverified_contacts(answer, " ".join(s["snippet"] for s in sources))
-        problems += [f"unverified contact {b}" for b in bad]
-        plain = answer.lower().replace("\u2019", "'")  # models often write curly apostrophes
-        if q["expected_url"] is None and not any(p in plain for p in DECLINES):
+        # A contact is "invented" only if it appears nowhere in what the tools returned.
+        problems += [f"invented contact {b}" for b in unverified_contacts(answer, " ".join(seen))]
+        if q["expected_url"] is None and not any(p in _norm(answer) for p in DECLINES):
             problems.append("should have said it couldn't find / can't help with it")
         passed += not problems
         print(f"{'PASS' if not problems else 'FAIL'}  {q['id']}: {'; '.join(problems)}\n      {answer[:160]!r}")

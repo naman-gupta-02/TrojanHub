@@ -6,8 +6,10 @@ final answer, then a `sources` event and `done`. Yields ChatEvent dicts (package
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -19,12 +21,23 @@ from app.chat.prompts import system_prompt
 from app.chat.tools import TOOLS
 from app.chat.tools.base import LA, ToolContext
 from app.chat.tools.runner import run_tool
+from app.chat.tools.usc_info import search_usc_info
 from app.core.llm import get_async_client, model_name
 
 log = logging.getLogger("tommy")
 
 MAX_STEPS = 4
 TEMPERATURE = 0.2
+CACHE_ON = os.getenv("CHAT_CACHE", "1") != "0"
+
+# Speed: for plain campus questions we search USC pages BEFORE the first LLM call and hand the
+# result over as if the model had asked for it, so it can answer in one call instead of two.
+_QUESTION = re.compile(r"\?|^\s*(when|where|what|who|how|which|is|are|can|does|do|whats|what's|where's|when's)\b", re.I)
+_ACTION = re.compile(r"\b(free|freebie|freebies|event|events|deal|deals|lost|found|find|flyer|tonight|happening|report|broken|complain\w*)\b", re.I)
+
+
+def should_prefetch(message: str, has_photo: bool) -> bool:
+    return not has_photo and bool(_QUESTION.search(message)) and not _ACTION.search(message)
 SORRY = "Sorry, I'm having trouble thinking right now. Please try again in a moment."
 
 
@@ -87,6 +100,41 @@ async def run_turn(
         {"role": "user", "content": user_text},
     ]
 
+    # Same first question today -> replay the cached answer.
+    key = store.cache_key(message, _today()) if CACHE_ON and not image_url and len(messages) == 2 else None
+    if key and (cached := store.cache_get(key)):
+        answer = ""
+        for ev in cached:
+            if ev["type"] == "token":
+                answer += ev["text"]
+                await asyncio.sleep(0.01)  # keep the typing effect
+            yield ev
+        store.remember(session_id, {"role": "user", "content": user_text}, {"role": "assistant", "content": answer})
+        yield {"type": "done", "session_id": session_id}
+        return
+
+    recorded: list[dict] = []  # events of this turn, for the cache
+    cacheable = key is not None
+
+    def out(ev: dict) -> dict:
+        recorded.append(ev)
+        return ev
+
+    # Pre-fetch USC sources for plain questions (see should_prefetch).
+    if should_prefetch(message, bool(image_url)):
+        try:
+            pre = await search_usc_info({"query": message}, ctx)
+        except Exception:  # noqa: BLE001 - no index yet, etc.: the model can still search itself
+            log.exception("prefetch failed")
+            pre = None
+        if pre and pre.result.get("sources"):
+            call = {"id": "prefetch_1", "name": "search_usc_info", "arguments": json.dumps({"query": message})}
+            yield out({"type": "tool_call", "id": call["id"], "name": call["name"], "arguments": {"query": message}})
+            yield out({"type": "tool_result", "id": call["id"], "name": call["name"], "result": pre.result})
+            messages.append({"role": "assistant", "content": None, "tool_calls": [
+                {"id": call["id"], "type": "function", "function": {"name": call["name"], "arguments": call["arguments"]}}]})
+            messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(pre.result, ensure_ascii=False)})
+
     answer = ""
     try:
         for step in range(MAX_STEPS):
@@ -94,7 +142,7 @@ async def run_turn(
             text, calls = "", []
             async for kind, value in _llm_step(messages, allow_tools=not last):
                 if kind == "token":
-                    yield {"type": "token", "text": value}
+                    yield out({"type": "token", "text": value})
                 else:
                     text, calls = value
             answer += text
@@ -111,14 +159,16 @@ async def run_turn(
                     args = json.loads(c["arguments"] or "{}")
                 except json.JSONDecodeError:
                     args = {"_raw": c["arguments"]}
-                yield {"type": "tool_call", "id": c["id"], "name": c["name"], "arguments": args}
+                yield out({"type": "tool_call", "id": c["id"], "name": c["name"], "arguments": args})
                 outcome = await run_tool(c["name"], c["arguments"], ctx)
-                yield {"type": "tool_result", "id": c["id"], "name": c["name"], "result": outcome.result}
+                yield out({"type": "tool_result", "id": c["id"], "name": c["name"], "result": outcome.result})
                 if outcome.confirm:
+                    cacheable = False  # confirm cards are tied to this session
                     yield outcome.confirm
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(outcome.result, ensure_ascii=False)})
     except Exception:  # noqa: BLE001 - never leave the UI hanging mid-stream
         log.exception("chat turn failed")
+        cacheable = False
         if not answer:
             answer = SORRY
             yield {"type": "token", "text": SORRY}
@@ -127,9 +177,23 @@ async def run_turn(
     if unverified_contacts(answer, " ".join(ctx.known_text)):
         note = "\n\n(I couldn't verify a contact detail above, so please check the official page before using it.)"
         answer += note
-        yield {"type": "token", "text": note}
+        yield out({"type": "token", "text": note})
 
-    if ctx.sources:
-        yield {"type": "sources", "sources": _cited(answer, ctx.sources)}
+    cited = _cited(answer, ctx.sources) if ctx.sources else []
+    if cited:
+        yield out({"type": "sources", "sources": cited})
+    if cacheable and key and answer.strip():
+        store.cache_put(key, recorded)
     store.remember(session_id, {"role": "user", "content": user_text}, {"role": "assistant", "content": answer})
+    _background(asyncio.to_thread(store.persist_turn, session_id, user_id, user_text, answer, cited))
     yield {"type": "done", "session_id": session_id}
+
+
+_tasks: set[asyncio.Task] = set()
+
+
+def _background(coro) -> None:
+    """Run without making the student wait (keeps a reference so it isn't garbage-collected)."""
+    task = asyncio.ensure_future(coro)
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)

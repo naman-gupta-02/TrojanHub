@@ -28,6 +28,17 @@ def _date_range(spec: str | None) -> tuple[str | None, str | None]:
     return lo.isoformat(), hi.isoformat()
 
 
+# Words that say "something free on campus" but don't narrow the search any further.
+_GENERIC = set("a an any anything are at around campus deal deals discount discounts event events food for free freebie freebies "
+               "going happening i in is me near now of on or student students stuff that the there this to today tonight usc week what whats".split())
+
+
+def specific_terms(query: str | None) -> str | None:
+    """'free food on campus today' -> None (the filters already say that); 'free pizza' -> 'pizza'."""
+    words = [w for w in (query or "").lower().replace("?", " ").replace("'", "").split() if w not in _GENERIC]
+    return " ".join(words) or None
+
+
 def _event(e: dict) -> dict:
     return {
         "id": e["id"], "title": e["title"], "when": pacific(e["starts_at"]), "ends": pacific(e.get("ends_at")),
@@ -40,9 +51,7 @@ def _event(e: dict) -> dict:
 
 async def search_events(args: dict, ctx: ToolContext) -> ToolOutcome:
     lo, hi = _date_range(args.get("date_range"))
-    q = args.get("query") or None
-    if q and args.get("freebie_only") and q.lower() in {"free food", "food", "free", "freebies"}:
-        q = None  # the freebie filter already means "free food"; a text match would be too narrow
+    q = specific_terms(args.get("query"))  # the filters carry "free" / "today"; keep only real keywords
     res = await call("GET", "/events/search", ctx.auth_header, params={
         "q": q, "from": lo, "to": hi,
         "free": "true" if args.get("free_only") else None, "freebie": "true" if args.get("freebie_only") else None,
@@ -53,8 +62,7 @@ async def search_events(args: dict, ctx: ToolContext) -> ToolOutcome:
 
 
 async def search_deals(args: dict, ctx: ToolContext) -> ToolOutcome:
-    q = args.get("query")
-    res = await call("GET", "/deals/search", ctx.auth_header, params={"q": None if q in {"free food", "free", "deals"} else q, "active": "true"})
+    res = await call("GET", "/deals/search", ctx.auth_header, params={"q": specific_terms(args.get("query")), "active": "true"})
     if "error" in res:
         return ToolOutcome(res)
     deals = [

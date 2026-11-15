@@ -55,6 +55,14 @@ Anything with an OpenAI-compatible `/v1/chat/completions` works. Check it with
 | **Backup API key** | `LLM_BASE_URL=<provider URL>`, `LLM_API_KEY=<key>`, `LLM_MODEL=<model>` | Fastest and real streaming. Keep one ready for the demo. |
 | none | leave `LLM_MODEL=` empty | `/api/chat` streams the mock. |
 
+Tommy is built to hide a slow model:
+- **Pre-fetch:** plain campus questions are searched before the first LLM call, so the model
+  answers in one call instead of two.
+- **Answer cache:** the same first question on the same day replays instantly (1 hour, in
+  memory; `CHAT_CACHE=0` turns it off). Ask the demo questions once before a pitch to warm it.
+- **Warm-up:** the embedding model loads at startup when `LLM_MODEL` is set (`CHAT_WARMUP=0` to skip).
+- Finished turns are saved to Supabase `chat_messages` when Supabase is configured.
+
 Evals against a slow or rate-limited model: `python -m evals.run --chat --only pantry_hours,its_phone`.
 
 Chunks are ~180-220 tokens (not the 500 in ARCHITECTURE.md §7.1) because the embedding model

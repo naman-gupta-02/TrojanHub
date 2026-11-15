@@ -1,5 +1,5 @@
 {
-  "_about": "Mock SSE stream for POST /api/chat (P1). Each event is sent as `data: <json>\\n\\n`. The server picks a scenario whose `match` words appear in the message, otherwise `no_answer`. All hours and contacts here are placeholders marked [MOCK]; the real bot copies them from scraped pages.",
+  "_about": "Mock SSE stream for POST /api/chat (P1). Each event is sent as `data: <json>\\n\\n`. The server picks a scenario whose `match` words appear in the message, otherwise `no_answer`. A message with a photo always gets the `flyer` scenario. All hours and contacts here are placeholders marked [MOCK]; the real bot copies them from scraped pages.",
   "_event_shapes": {
     "token": {"type": "token", "text": "string chunk of the answer"},
     "tool_call": {"type": "tool_call", "id": "call_1", "name": "tool name", "arguments": {}},
@@ -64,6 +64,17 @@
         {"type": "done", "session_id": "mock-session"}
       ]
     },
+    "flyer": {
+      "match": [],
+      "events": [
+        {"type": "tool_call", "id": "call_1", "name": "scan_flyer", "arguments": {"image_url": "photo://1"}},
+        {"type": "tool_result", "id": "call_1", "name": "scan_flyer", "result": {"status": "awaiting_confirmation", "action_id": "act_mock_flyer", "draft": {"title": "[MOCK] Diwali Night", "starts_at": "2026-11-21T03:00:00Z", "ends_at": null, "location_text": "TCC Grand Ballroom", "building_id": "b0000000-0000-0000-0000-000000000009", "is_free": false, "has_freebie": false, "freebie_desc": null, "register_url": null, "org_name": "[MOCK] South Asian student org", "category": "cultural", "type": "event", "missing": ["ends_at", "register_url"], "flyer_url": "photo://1"}}},
+        {"type": "token", "text": "I read the flyer: [MOCK] Diwali Night, Fri Nov 20 at 7 PM, TCC Grand Ballroom. "},
+        {"type": "token", "text": "The end time and sign-up link are missing. Tap Confirm to add it to Events."},
+        {"type": "confirm", "action_id": "act_mock_flyer", "tool": "scan_flyer", "title": "Add this event", "summary": "[MOCK] Diwali Night · Fri Nov 20, 7 PM PT · TCC Grand Ballroom · missing: ends_at, register_url", "draft": {"title": "[MOCK] Diwali Night", "starts_at": "2026-11-21T03:00:00Z", "ends_at": null, "location_text": "TCC Grand Ballroom", "building_id": "b0000000-0000-0000-0000-000000000009", "is_free": false, "has_freebie": false, "freebie_desc": null, "register_url": null, "org_name": "[MOCK] South Asian student org", "category": "cultural", "type": "event", "missing": ["ends_at", "register_url"], "flyer_url": "photo://1"}},
+        {"type": "done", "session_id": "mock-session"}
+      ]
+    },
     "no_answer": {
       "match": [],
       "events": [
@@ -77,6 +88,10 @@
         {"type": "done", "session_id": "mock-session"}
       ]
     }
+  },
+  "confirm_responses": {
+    "_about": "Mock /api/chat/confirm responses for specific action ids (others use confirm_response).",
+    "act_mock_flyer": {"status": "done", "message": "Added! [MOCK] Diwali Night is on the Events calendar.", "result": {"event_id": "e0000000-0000-0000-0000-000000000003"}}
   },
   "confirm_response": {
     "_about": "Mock response for POST /api/chat/confirm when approved=true.",

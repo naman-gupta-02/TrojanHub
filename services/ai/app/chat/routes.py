@@ -10,7 +10,9 @@ UI can be built anyway.
 
 import asyncio
 import json
+import os
 import re
+import threading
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -26,6 +28,20 @@ from app.core.config import settings
 from app.core.mocks import load_mock
 
 router = APIRouter(tags=["chat (P1)"])
+
+
+def _warm_up() -> None:
+    """Load the embedding model and index now, so the first question isn't ~10 s slower."""
+    try:
+        from app.rag.retrieve import retrieve
+
+        retrieve("warm up")
+    except Exception as e:  # noqa: BLE001 - e.g. no index built yet
+        print(f"[chat] warm-up skipped: {e}")
+
+
+if settings.llm_model and os.getenv("CHAT_WARMUP", "1") != "0":
+    threading.Thread(target=_warm_up, daemon=True, name="tommy-warmup").start()
 
 MOCK_TOKEN_DELAY = 0.05  # seconds between events, so the UI can show streaming
 
@@ -50,6 +66,8 @@ def _sse(event: dict) -> str:
 def _pick_scenario(message: str, image_url: str | None) -> list[dict]:
     """First scenario with a whole-word match wins (so "photo" doesn't match "hot")."""
     scenarios = load_mock("chat_stream")["scenarios"]
+    if image_url and "flyer" in scenarios:
+        return scenarios["flyer"]["events"]
     text = message.lower()
     for name, s in scenarios.items():
         if name != "no_answer" and any(re.search(rf"\b{re.escape(w)}\b", text) for w in s["match"]):
@@ -90,8 +108,9 @@ async def chat_confirm(req: ConfirmRequest, user_id: str = Depends(get_user_id))
         if not _agent_enabled():  # mock chat stream -> mock confirm
             if not req.approved:
                 return {"action_id": req.action_id, "status": "cancelled", "message": "No problem, I didn't file anything."}
-            mock = {k: v for k, v in load_mock("chat_stream")["confirm_response"].items() if not k.startswith("_")}
-            return {**mock, "action_id": req.action_id}
+            data = load_mock("chat_stream")
+            mock = data.get("confirm_responses", {}).get(req.action_id) or data["confirm_response"]
+            return {**{k: v for k, v in mock.items() if not k.startswith("_")}, "action_id": req.action_id}
         raise HTTPException(404, detail={"code": "not_found", "message": "That card expired. Ask Tommy again."})
 
     if not req.approved:

@@ -1,7 +1,7 @@
-"""In-memory chat state: recent history per session + actions waiting for a "yes".
+"""Chat state: recent history per session, actions waiting for a "yes", and an answer cache.
 
-Good enough for the hackathon (one process). TODO(P1, Phase 3): also write chat_messages to
-Supabase so history survives restarts.
+Everything is in memory (one process is enough for the hackathon). Finished turns are also
+written to Supabase `chat_messages` when it is configured, as a record; they are not read back.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ from typing import Any
 
 MAX_HISTORY = 12  # messages kept per session (user + assistant)
 PENDING_TTL = 30 * 60  # seconds a confirm card stays valid
+CACHE_TTL = 60 * 60  # seconds a cached answer stays fresh
+CACHE_MAX = 200
 
 
 @dataclass
@@ -83,3 +85,53 @@ def _expire() -> None:
     now = time.time()
     for k in [k for k, a in _pending.items() if now - a.created > PENDING_TTL]:
         del _pending[k]
+
+
+# ---------------------------------------------------------------------------
+# Answer cache: the same first question (no history, no photo) on the same day replays instantly.
+# ---------------------------------------------------------------------------
+_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
+def cache_key(message: str, today: str) -> str:
+    return today + "|" + " ".join(message.lower().replace("?", " ").replace("!", " ").replace(".", " ").split())
+
+
+def cache_get(key: str) -> list[dict] | None:
+    hit = _cache.get(key)
+    if not hit or time.time() - hit[0] > CACHE_TTL:
+        _cache.pop(key, None)
+        return None
+    return hit[1]
+
+
+def cache_put(key: str, events: list[dict]) -> None:
+    if len(_cache) >= CACHE_MAX:
+        _cache.pop(min(_cache, key=lambda k: _cache[k][0]))
+    _cache[key] = (time.time(), events)
+
+
+def cache_clear() -> None:
+    _cache.clear()
+
+
+# ---------------------------------------------------------------------------
+# Supabase record of finished turns (best effort; never breaks the chat)
+# ---------------------------------------------------------------------------
+def persist_turn(session_id: str, user_id: str | None, user_text: str, answer: str, sources: list[dict]) -> None:
+    from app.core.auth import DEMO_USER_ID
+    from app.core.config import settings
+
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        return
+    try:
+        from app.core.supabase import get_supabase
+
+        uid = None if user_id in (None, DEMO_USER_ID, "eval") else user_id  # FK to profiles
+        slim = [{"n": s["n"], "title": s["title"], "url": s["url"]} for s in sources]
+        get_supabase().table("chat_messages").insert([
+            {"session_id": session_id, "user_id": uid, "role": "user", "content": user_text},
+            {"session_id": session_id, "user_id": uid, "role": "assistant", "content": answer, "sources": slim or None},
+        ]).execute()
+    except Exception as e:  # noqa: BLE001
+        print(f"[chat] couldn't save chat_messages: {e}")
