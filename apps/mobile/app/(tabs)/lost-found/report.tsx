@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { DPS_DROPOFF, type PickedPhoto, currentUserId, getBuildings, isMock, pickPhoto, postFoundItem, setTier } from '@/components/lost-found/data';
+import { EditItem } from '@/components/lost-found/EditItem';
 import { Button, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice, s } from '@/components/lost-found/ui';
 
 export default function ReportFoundScreen() {
@@ -112,6 +113,7 @@ export default function ReportFoundScreen() {
 function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiven: boolean }) {
   const [item, setItem] = useState<Item>(initial.item);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [buildings, setBuildings] = useState<Record<string, Building>>({});
 
@@ -146,8 +148,24 @@ function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiv
           <Text style={s.title}>{item.title}</Text>
           {item.description ? <Text style={s.muted}>{item.description}</Text> : null}
           <Text style={s.muted}>{item.location_text}</Text>
+          {!editing ? (
+            <Text accessibilityRole="button" onPress={() => setEditing(true)} style={{ color: colors.cardinal, fontWeight: '700', paddingVertical: spacing.sm }}>
+              Edit details
+            </Text>
+          ) : null}
         </View>
       </View>
+
+      {editing ? (
+        <EditItem
+          item={item}
+          onSaved={(saved) => {
+            setItem(saved);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : null}
 
       {photoGiven && !item.photo_url ? (
         <View style={[s.card, { backgroundColor: '#FFF4CC' }]}>

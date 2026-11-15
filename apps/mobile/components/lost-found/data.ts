@@ -128,6 +128,24 @@ export async function setTier(item: Item, tier: ItemTier): Promise<Item> {
   return data as Item;
 }
 
+export type ItemChanges = { description?: string; location_text?: string; photo?: UploadFile; remove_photo?: boolean };
+
+/** The finder edits their post (PATCH /api/items/{id}, P2's own endpoint): the AI service saves it
+ * and refreshes what search uses. Only changed fields are sent. Uses React Native's fetch, which
+ * understands {uri, name, type} photo files. */
+export async function editItem(itemId: string, changes: ItemChanges): Promise<Item> {
+  const form = new FormData();
+  if (changes.description !== undefined) form.append('description', changes.description);
+  if (changes.location_text !== undefined) form.append('location_text', changes.location_text);
+  if (changes.photo) form.append('photo', changes.photo as Blob);
+  if (changes.remove_photo) form.append('remove_photo', 'true');
+  const token = await getAccessToken();
+  const res = await fetch(`${API_URL}/api/items/${itemId}`, { method: 'PATCH', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error?.message ?? "Couldn't save your changes. Is the AI service running?");
+  return body.item as Item;
+}
+
 /** The finder takes the post down (picked up, or no longer there), so it leaves search. */
 export async function removePost(itemId: string): Promise<void> {
   if (!supabase) return;

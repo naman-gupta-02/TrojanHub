@@ -84,6 +84,11 @@ def test_signed_out_cannot_claim_item(live):
     assert live.post("/api/items/c0000000-0000-0000-0000-000000000002/claim").status_code == 401
 
 
+def test_signed_out_cannot_edit_item(live):
+    r = live.patch("/api/items/c0000000-0000-0000-0000-000000000002", data={"description": "changed"})
+    assert r.status_code == 401
+
+
 def test_signed_in_can_post_found_item(live, monkeypatch):
     async def fake_verify(token):
         return "11111111-1111-1111-1111-111111111111"

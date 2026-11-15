@@ -4,10 +4,11 @@
 import type { Building, CreateItemResponse, Item, ItemTier } from "@trojanhub/shared";
 import { ApiRequestError } from "@trojanhub/shared/api";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 
+import { EditItem } from "../_components/EditItem";
 import { BackLink, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice } from "../_components/parts";
 import { DPS_DROPOFF, currentUserId, getBuildings, isMock, setTier, shrinkPhoto } from "../_lib/data";
 
@@ -24,6 +25,23 @@ export default function ReportFoundPage() {
   useEffect(() => {
     if (!isMock) currentUserId().then((uid) => setSignedIn(!!uid));
   }, []);
+
+  // Next.js keeps this page alive in the background (cacheComponents / <Activity>), so coming back
+  // would show the last "Posted" screen. Once something was posted, start fresh when the page is left.
+  // An unsent draft is kept. (next/dist/docs: "Preserving UI state" > forms)
+  useLayoutEffect(() => {
+    if (!posted) return;
+    return () => {
+      setPosted(null);
+      setPhoto((p) => {
+        if (p) URL.revokeObjectURL(p.preview);
+        return null;
+      });
+      setDescription("");
+      setWhere("");
+      setError(null);
+    };
+  }, [posted]);
 
   async function pickPhoto(file: File | undefined) {
     if (!file) return;
@@ -136,6 +154,7 @@ export default function ReportFoundPage() {
 function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiven: boolean }) {
   const [item, setItem] = useState<Item>(initial.item);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [buildings, setBuildings] = useState<Record<string, Building>>({});
 
@@ -172,8 +191,24 @@ function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiv
           <p className="text-lg font-semibold">{item.title}</p>
           {item.description && <p className="text-sm text-muted">{item.description}</p>}
           <p className="text-sm text-muted">{item.location_text}</p>
+          {!editing && (
+            <button onClick={() => setEditing(true)} className="min-h-11 text-sm font-semibold text-cardinal hover:underline">
+              Edit details
+            </button>
+          )}
         </div>
       </div>
+
+      {editing && (
+        <EditItem
+          item={item}
+          onSaved={(saved) => {
+            setItem(saved);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
 
       {photoGiven && !item.photo_url && (
         <p className="rounded-md bg-gold/25 p-3 text-sm">We didn&apos;t save your photo: ID and bank cards show private info. The item is still posted.</p>
