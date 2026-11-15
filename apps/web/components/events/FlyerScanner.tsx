@@ -37,6 +37,19 @@ const EMPTY: Form = {
 
 const STEPS = ["Uploading photo", "Reading the flyer", "Checking for duplicates"];
 const LOW = 0.7;
+const DEFAULT_EVENT_MS = 2 * 60 * 60 * 1000; // events without an end time count as 2 hours (same as the server)
+
+/** Same rule as the server: an event is over at its end time (or 2h after it starts); a deal at its expiry. */
+function alreadyEnded(kind: Kind, form: Form): boolean {
+  const ms = (v: string) => {
+    const t = new Date(fromLocalInput(v) ?? NaN).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+  const starts = ms(form.starts_at);
+  const ends = ms(form.ends_at);
+  const end = kind === "deal" ? ends : ends ?? (starts === null ? null : starts + DEFAULT_EVENT_MS);
+  return end !== null && end <= Date.now();
+}
 
 export function FlyerScanner() {
   const router = useRouter();
@@ -115,6 +128,7 @@ export function FlyerScanner() {
     setError(null);
     if (form.title.trim().length < 3) return setError("Add a title (at least 3 characters).");
     if (kind === "event" && !form.starts_at) return setError("When does it start?");
+    if (alreadyEnded(kind, form)) return; // the banner explains; the server refuses it too
     setSaving(true);
     try {
       if (kind === "event") {
@@ -241,6 +255,13 @@ export function FlyerScanner() {
   });
   const filled = scan ? Object.keys(conf).length : 0;
   const toCheck = scan ? Object.values(conf).filter((v) => (v ?? 1) < LOW).length : 0;
+  const ended = alreadyEnded(kind, form);
+  const endedText =
+    kind === "deal"
+      ? "This deal already expired, so it can't be posted."
+      : scan?.ended
+        ? "This flyer is for an event that already ended, so it can't be posted."
+        : "This event already ended, so it can't be posted.";
 
   return (
     <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
@@ -290,7 +311,14 @@ export function FlyerScanner() {
           </div>
         </div>
 
-        {duplicate && (
+        {ended && (
+          <div role="alert" className="space-y-1 rounded-2xl border border-danger/30 bg-danger/5 p-4">
+            <p className="font-bold text-danger">⏰ {endedText}</p>
+            <p className="text-sm text-muted">Only upcoming events and current deals go on TrojanHub. If the date was read wrong, fix it below.</p>
+          </div>
+        )}
+
+        {duplicate && !ended && (
           <div role="alert" className="space-y-2 rounded-2xl border border-gold bg-gold/15 p-4">
             <p className="font-bold">👀 This might already be posted</p>
             <p className="text-sm">
@@ -404,7 +432,7 @@ export function FlyerScanner() {
         )}
 
         <div className="flex flex-wrap gap-3 border-t border-line pt-6">
-          <button disabled={saving} className={btn.primary}>
+          <button disabled={saving || ended} className={`${btn.primary} disabled:cursor-not-allowed disabled:opacity-50`}>
             {saving ? "Posting…" : kind === "event" ? "Post event" : "Post deal"}
           </button>
           <Link href="/events" className={btn.secondary}>

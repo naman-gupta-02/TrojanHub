@@ -118,6 +118,10 @@ async def scan_flyer(args: dict, ctx: ToolContext) -> ToolOutcome:
     res = await call("POST", "/flyers/scan", ctx.auth_header, json={"image_url": real_image})
     if "error" in res:
         return ToolOutcome(res)
+    if res.get("ended"):
+        return ToolOutcome({"ended": True, "fields": res["fields"],
+                            "note": "This flyer is for an event that already ended, so it can't be posted. "
+                                    "Tell the student that, and don't offer to post it."})
     draft = {**res["fields"], "type": res["type"], "missing": res.get("missing", []), "flyer_url": args["image_url"]}
     if res.get("duplicate_of"):
         return ToolOutcome({"duplicate_of": res["duplicate_of"], "fields": res["fields"],

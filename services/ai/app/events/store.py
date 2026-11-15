@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from app.core.supabase import get_supabase
-from app.events.dates import iso, now_utc, parse_ts
+from app.events.dates import has_ended, iso, now_utc, parse_ts
 
 EVENT_SELECT = "*, orgs(name, verified)"
 _TWO_HOURS = timedelta(hours=2)
@@ -53,7 +53,7 @@ def search_events(
     freebie: bool | None = None,
     limit: int = 200,
 ) -> list[dict]:
-    """Published events, soonest first. With no `start`, hides events that already ended."""
+    """Published events, soonest first. Events that already ended are always left out."""
     query = get_supabase().table("events").select(EVENT_SELECT).eq("status", "published")
     if start:
         query = query.gte("starts_at", iso(start))
@@ -75,10 +75,9 @@ def search_events(
             f"title.ilike.{like},description.ilike.{like},location_text.ilike.{like},freebie_desc.ilike.{like}"
         )
     rows = [_event(r) for r in _rows(query.order("starts_at").limit(limit).execute())]
-    if not start:
-        now = now_utc()
-        rows = [r for r in rows if (parse_ts(r["ends_at"]) or parse_ts(r["starts_at"]) + _TWO_HOURS) > now]
-    return rows
+    # never list events that already ended, even when `start` is in the past ("this week" on a Friday)
+    now = now_utc()
+    return [r for r in rows if not has_ended(r["starts_at"], r["ends_at"], now)]
 
 
 def get_event(event_id: str) -> dict | None:

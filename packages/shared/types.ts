@@ -346,6 +346,8 @@ export interface FlyerScanResponse {
     how_to_claim: string | null; // deals
   };
   duplicate?: { id: UUID; title: string; starts_at: ISODate };
+  /** true = the event already ended (or the deal expired); POST /events and /deals will refuse it (422) */
+  ended?: boolean;
 }
 
 /** POST /flyers/upload is multipart/form-data: photo (file) */

@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 from app.core.llm import get_vision_client, model_name
 from app.events import dedupe, store
-from app.events.dates import LA, iso, now_utc, parse_ts
+from app.events.dates import LA, has_ended, iso, now_utc, parse_ts
 
 CATEGORIES = ("cultural", "career", "free_food", "sports", "social", "academic", "other")
 FIELDS = ("title", "starts_at", "ends_at", "location_text", "building_id", "is_free", "has_freebie",
@@ -243,10 +243,13 @@ def normalize(raw: dict, buildings: list[dict]) -> dict:
     not_needed = {"building_id"} | ({"freebie_desc"} if not fields["has_freebie"] else set())
     missing = [f for f in FIELDS if fields[f] is None and f not in not_needed]
     kind = "deal" if _text(raw.get("type")) == "deal" else "event"
+    # an old flyer: the event is over (or the deal expired), so it can't be posted
+    ended = has_ended(starts, ends) if kind == "event" else bool(ends and ends <= now_utc())
     return {
         "type": kind,
         "fields": fields,
         "missing": missing,
+        "ended": ended,
         "confidence": confidence,
         "extra": {
             "description": _text(raw.get("description")),
@@ -264,7 +267,7 @@ def scan(image_url: str) -> dict:
         raise HTTPException(422, detail={"code": "not_a_flyer", "message": "That doesn't look like a flyer. Try a clearer, straight-on photo."})
     result = normalize(raw, buildings)
     f = result["fields"]
-    if result["type"] == "event":
+    if result["type"] == "event" and not result["ended"]:
         dup = dedupe.find_duplicate(f["title"], f["starts_at"], f["location_text"])
         if dup:
             result["duplicate_of"] = dup["id"]
