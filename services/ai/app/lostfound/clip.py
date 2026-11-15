@@ -63,15 +63,19 @@ def open_image(data: bytes):
         raise ValueError("That file isn't a photo we can read. Try a JPG or PNG.") from e
 
 
-def embed_image(data: bytes) -> np.ndarray:
-    """Photo bytes -> unit vector (512,). Raises ValueError for files that aren't images."""
+def embed_pil(img) -> np.ndarray:
+    """RGB PIL image -> unit vector (512,)."""
     import torch
 
     model, preprocess, _ = _load()
-    img = open_image(data)
     with torch.inference_mode():
         feats = model.encode_image(preprocess(img).unsqueeze(0))
     return _normalize(feats.float().numpy())[0]
+
+
+def embed_image(data: bytes) -> np.ndarray:
+    """Photo bytes -> unit vector (512,). Raises ValueError for files that aren't images."""
+    return embed_pil(open_image(data))
 
 
 def embed_texts(texts: list[str]) -> np.ndarray:

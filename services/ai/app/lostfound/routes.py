@@ -12,11 +12,13 @@ with the real logic (clip.py, tiers.py) when it's ready; keep the response shape
 import re
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import get_user_id
 from app.core.config import settings
 from app.core.mocks import load_mock, not_built
+from app.lostfound import items
 
 router = APIRouter(tags=["lost & found (P2)"])
 OWNER = "P2 Vishwa"
@@ -37,7 +39,21 @@ async def create_item(
     if settings.use_mocks:
         valuable = bool(description and _VALUABLE_WORDS.search(description.lower()))
         return load_mock("items_create_valuable" if valuable else "items_create")
-    raise not_built(OWNER)
+
+    photo_bytes = await photo.read() if photo else None
+    try:
+        # CLIP + Supabase calls block, so they run in a worker thread, not on the event loop
+        return await run_in_threadpool(
+            items.create_item,
+            user_id=user_id,
+            kind=kind,
+            photo=photo_bytes or None,
+            description=description,
+            building_id=building_id,
+            location_text=location_text,
+        )
+    except items.ItemError as e:
+        raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
 
 
 @router.get("/items/search")
