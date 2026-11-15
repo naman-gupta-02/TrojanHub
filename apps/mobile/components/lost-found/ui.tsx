@@ -5,13 +5,62 @@ import { Link, router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { matchLabel, timeAgo, whereFound } from './data';
+import { matchLabel, placeMapLink, timeAgo, whereFound } from './data';
 
+/** Where the item is now: 'valuable' = taken to DPS, 'everyday' = left where it was found. */
 export function TierBadge({ tier }: { tier: ItemTier }) {
   const valuable = tier === 'valuable';
   return (
     <View style={[s.badge, { backgroundColor: valuable ? colors.valuable : colors.everyday }]}>
-      <Text style={s.badgeText}>{valuable ? 'Valuable · at DPS' : 'Everyday'}</Text>
+      <Text style={s.badgeText}>{valuable ? 'At DPS' : 'Left where found'}</Text>
+    </View>
+  );
+}
+
+/** The finder's choice: taken to DPS, or left where found. The AI's suggestion is pre-selected. */
+export function WhereNowChoice({ tier, onChange, busy }: { tier: ItemTier; onChange: (t: ItemTier) => void; busy?: boolean }) {
+  const options: { value: ItemTier; title: string; hint: string }[] = [
+    { value: 'valuable', title: "I'm taking it to DPS Lost & Found", hint: 'Best for phones, wallets, IDs, keys, AirPods. DPS checks who really owns it.' },
+    { value: 'everyday', title: 'I left it where I found it', hint: 'Owners will see the place you wrote and go there.' },
+  ];
+  return (
+    <View style={{ gap: spacing.sm }} accessibilityRole="radiogroup" accessibilityLabel="Where is the item now?">
+      <Text style={s.title}>Where is the item now?</Text>
+      {options.map((o) => {
+        const selected = tier === o.value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            disabled={busy}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected, disabled: !!busy }}
+            style={[s.card, { borderWidth: 2, borderColor: selected ? colors.cardinal : colors.line, flexDirection: 'row', alignItems: 'flex-start' }]}>
+            <View style={[s.radio, selected && { borderColor: colors.cardinal }]}>{selected ? <View style={s.radioDot} /> : null}</View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.title}>{o.title}</Text>
+              <Text style={s.muted}>{o.hint}</Text>
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** For items the finder left where they found them. */
+export function LeftHereCard({ item, buildings, title, children }: { item: Item; buildings: Record<string, Building>; title: string; children?: ReactNode }) {
+  return (
+    <View style={[s.dropoff, { borderColor: colors.everyday }]}>
+      <Text style={[s.title, { color: colors.everyday }]}>{title}</Text>
+      <Text style={{ fontWeight: '700', fontSize: fontSize.lg, color: colors.ink }}>{whereFound(item, buildings)}</Text>
+      {children}
+      <Pressable
+        onPress={() => Linking.openURL(placeMapLink(item, buildings))}
+        accessibilityRole="link"
+        style={({ pressed }) => [s.button, { backgroundColor: colors.everyday }, pressed && { opacity: 0.7 }]}>
+        <Text style={[s.buttonText, { color: '#fff' }]}>Open in Maps</Text>
+      </Pressable>
     </View>
   );
 }
@@ -38,7 +87,7 @@ export function Card({ onPress, label, children }: { onPress: () => void; label:
 
 export function ItemRow({ item, buildings, score }: { item: Item; buildings: Record<string, Building>; score?: number }) {
   return (
-    <Card onPress={() => router.push(`/lost-found/${item.id}`)} label={`${item.title}, ${item.tier}`}>
+    <Card onPress={() => router.push(`/lost-found/${item.id}`)} label={`${item.title}, ${item.tier === 'valuable' ? 'at DPS' : 'left where found'}`}>
       <ItemPhoto item={item} size={84} />
       <View style={{ flex: 1, gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' }}>
@@ -122,4 +171,6 @@ export const s = StyleSheet.create({
   buttonText: { fontWeight: '700', fontSize: fontSize.md },
   dropoff: { backgroundColor: colors.surface, borderColor: colors.cardinal, borderWidth: 2, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },
   error: { backgroundColor: '#FDECEE', borderRadius: radius.sm, padding: spacing.md },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.cardinal },
 });

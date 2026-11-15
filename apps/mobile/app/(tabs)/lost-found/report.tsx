@@ -1,14 +1,14 @@
-// P2 Vishwa: "I found something". Photo + where it was found -> AI sorts it -> posted.
-// Valuables get the DPS drop-off card; when the AI isn't sure, the finder answers one question.
-import type { CreateItemResponse, Item, ItemTier } from '@trojanhub/shared';
+// P2 Vishwa: "I found something". Photo + where it was found -> posted. Then the finder says
+// where the item is now: taken to DPS, or left where found (the AI pre-selects one).
+import type { Building, CreateItemResponse, Item, ItemTier } from '@trojanhub/shared';
 import { ApiRequestError } from '@trojanhub/shared/api';
 import { colors, radius, spacing } from '@trojanhub/shared/theme';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { DPS_DROPOFF, type PickedPhoto, currentUserId, isMock, pickPhoto, postFoundItem, setTier } from '@/components/lost-found/data';
-import { Button, DropoffCard, ErrorNote, ItemPhoto, SignInNotice, TierBadge, s } from '@/components/lost-found/ui';
+import { DPS_DROPOFF, type PickedPhoto, currentUserId, getBuildings, isMock, pickPhoto, postFoundItem, setTier } from '@/components/lost-found/data';
+import { Button, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice, s } from '@/components/lost-found/ui';
 
 export default function ReportFoundScreen() {
   const [signedIn, setSignedIn] = useState<boolean | null>(isMock ? true : null);
@@ -89,7 +89,9 @@ export default function ReportFoundScreen() {
           accessibilityLabel="What is it?"
           style={s.input}
         />
-        <Text style={s.title}>Where did you find it?</Text>
+        <Text style={s.title}>
+          Where did you find it? <Text style={s.small}>(be specific: if you leave it there, owners will go to this spot)</Text>
+        </Text>
         <TextInput
           value={where}
           onChangeText={setWhere}
@@ -101,7 +103,7 @@ export default function ReportFoundScreen() {
 
         {error && <ErrorNote message={error} />}
         <Button label={busy ? 'Looking at your photo…' : 'Post it'} onPress={submit} busy={busy} />
-        <Text style={s.small}>Your name, email and phone number are never shown. Owners contact you through in-app messages.</Text>
+        <Text style={s.small}>Your name, email and phone number are never shown.</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -109,17 +111,28 @@ export default function ReportFoundScreen() {
 
 function Posted({ initial }: { initial: CreateItemResponse }) {
   const [item, setItem] = useState<Item>(initial.item);
-  const [asking, setAsking] = useState(!!initial.ask_tier);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dropoff = item.tier === 'valuable' ? initial.dropoff ?? DPS_DROPOFF : null;
+  const [buildings, setBuildings] = useState<Record<string, Building>>({});
 
-  async function answer(tier: ItemTier) {
+  useEffect(() => {
+    getBuildings().then(setBuildings);
+  }, []);
+
+  /** Show the new choice right away, save in the background, undo if the save fails. */
+  async function choose(tier: ItemTier) {
+    if (tier === item.tier) return;
+    const prev = item;
+    setItem({ ...prev, tier });
+    setBusy(true);
     setError(null);
     try {
-      if (tier !== item.tier) setItem(await setTier(item, tier));
-      setAsking(false);
+      setItem(await setTier(prev, tier));
     } catch (e) {
+      setItem(prev);
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -136,29 +149,23 @@ function Posted({ initial }: { initial: CreateItemResponse }) {
         </View>
       </View>
 
-      {asking && (
-        <View style={[s.card, { borderColor: colors.gold, borderWidth: 2 }]}>
-          <Text style={s.title}>Quick check: is this a valuable?</Text>
-          <Text style={s.muted}>For example a phone, laptop, wallet, ID, keys, AirPods, or a bag that might have those inside.</Text>
-          <Button label="Yes, it's valuable" onPress={() => answer('valuable')} />
-          <Button label="No, it's an everyday item" kind="secondary" onPress={() => answer('everyday')} />
-        </View>
-      )}
+      <WhereNowChoice tier={item.tier} onChange={choose} busy={busy} />
+      <Text style={s.muted}>
+        {initial.ask_tier
+          ? "We weren't sure about this one. If it might hold something valuable (like a bag), DPS is safer."
+          : "We picked this from your photo. Tap the other option if that's not right."}
+      </Text>
       {error && <ErrorNote message={error} />}
 
-      {!asking &&
-        (dropoff ? (
-          <DropoffCard dropoff={dropoff} title="This looks valuable. Please take it to DPS.">
-            <Text style={{ color: colors.ink }}>DPS keeps valuables safe and checks who really owns them. Owners who search will be told to pick it up there.</Text>
-          </DropoffCard>
-        ) : (
-          <View style={s.card}>
-            <Text style={s.title}>You can hold on to it.</Text>
-            <Text style={s.muted}>
-              Owners who search will find it. When someone taps “This is mine”, you’ll see a message in My handoffs. The post comes down after 14 days.
-            </Text>
-          </View>
-        ))}
+      {item.tier === 'valuable' ? (
+        <DropoffCard dropoff={initial.dropoff ?? DPS_DROPOFF} title="Please take it to DPS Lost & Found.">
+          <Text style={{ color: colors.ink }}>DPS keeps found items for 90 days and checks who really owns them. Owners who search will be sent there.</Text>
+        </DropoffCard>
+      ) : (
+        <LeftHereCard item={item} buildings={buildings} title="Owners who search will be told it's here:">
+          <Text style={s.muted}>The post comes down after 14 days. If you move it, open your post and take it down.</Text>
+        </LeftHereCard>
+      )}
 
       <Button label="View post" kind="secondary" onPress={() => router.replace(`/lost-found/${item.id}`)} />
       <Button label="Back to Lost & Found" kind="secondary" onPress={() => router.back()} />

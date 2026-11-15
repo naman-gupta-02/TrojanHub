@@ -9,8 +9,6 @@ export default function LostFoundLayout() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="report" options={{ title: 'I found something' }} />
       <Stack.Screen name="[id]" options={{ title: 'Item' }} />
-      <Stack.Screen name="chats/index" options={{ title: 'My handoffs' }} />
-      <Stack.Screen name="chats/[threadId]" options={{ title: 'Handoff chat' }} />
     </Stack>
   );
 }

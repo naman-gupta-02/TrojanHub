@@ -81,14 +81,7 @@ export default function LostFoundHome() {
   const header = (
     <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
       <Text style={s.muted}>Lost something on campus? Search here. Found something? Post it in one step.</Text>
-      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-        <View style={{ flex: 1 }}>
-          <Button label="I found something" onPress={() => router.push('/lost-found/report')} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Button label="My handoffs" kind="secondary" onPress={() => router.push('/lost-found/chats')} />
-        </View>
-      </View>
+      <Button label="I found something" onPress={() => router.push('/lost-found/report')} />
       {signedIn === false ? (
         <SignInNotice what="search and post lost items" />
       ) : (

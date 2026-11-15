@@ -83,9 +83,6 @@ export default function LostFoundPage() {
           <p className="text-muted">Lost something on campus? Search here. Found something? Post it in one step.</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/lost-found/messages" className="inline-flex min-h-11 items-center rounded-md border border-line bg-surface px-4 font-semibold hover:bg-background">
-            My handoffs
-          </Link>
           <Link href="/lost-found/report" className="inline-flex min-h-11 items-center rounded-md bg-cardinal px-4 font-semibold text-white hover:bg-cardinal-dark">
             I found something
           </Link>

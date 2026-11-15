@@ -1,68 +1,70 @@
 "use client";
-// P2 Vishwa: one found item + "This is mine".
-import type { Building, DropoffInfo, Item } from "@trojanhub/shared";
-import { ApiRequestError } from "@trojanhub/shared/api";
-import { useParams, useRouter } from "next/navigation";
+// P2 Vishwa: one found item. Owners see right away where to get it: DPS, or the spot the finder
+// left it. The finder can switch that, or take the post down.
+import type { Building, Item, ItemTier } from "@trojanhub/shared";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { api } from "@/lib/api";
-
-import { DPS_DROPOFF, currentUserId, getBuildings, getItem, isMock, markReturned, timeAgo, whereFound } from "../_lib/data";
-import { BackLink, DropoffCard, ErrorNote, ItemPhoto, SignInNotice, TierBadge } from "./parts";
+import { DPS_DROPOFF, currentUserId, getBuildings, getItem, isMock, removePost, setTier, timeAgo } from "../_lib/data";
+import { BackLink, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice } from "./parts";
 
 export function ItemDetail() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [state, setState] = useState<"loading" | "ready" | "missing" | "signed-out">("loading");
   const [item, setItem] = useState<Item | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [buildings, setBuildings] = useState<Record<string, Building>>({});
-  const [pickup, setPickup] = useState<DropoffInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const uid = await currentUserId();
+      if (cancelled) return;
       if (!isMock && !uid) return setState("signed-out");
       setUserId(uid);
       try {
         const [it, bs] = await Promise.all([getItem(id), getBuildings()]);
+        if (cancelled) return;
         setBuildings(bs);
         setItem(it);
         setState(it ? "ready" : "missing");
       } catch (e) {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : String(e));
         setState("missing");
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  async function claim() {
+  async function run(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.items.claim(id);
-      if ("thread_id" in res) router.push(`/lost-found/messages/${res.thread_id}`);
-      else setPickup(res.pickup);
-    } catch (e) {
-      setError(e instanceof ApiRequestError ? e.message : "Couldn't claim right now. Is the AI service running?");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function returned() {
-    if (!item) return;
-    setBusy(true);
-    try {
-      await markReturned(item.id);
-      setItem({ ...item, status: "claimed" });
+      await action();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Show the new choice right away, save in the background, undo if the save fails. */
+  function changeTier(prev: Item, tier: ItemTier) {
+    if (tier === prev.tier) return;
+    setItem({ ...prev, tier });
+    run(async () => {
+      try {
+        setItem(await setTier(prev, tier));
+      } catch (e) {
+        setItem(prev);
+        throw e;
+      }
+    });
   }
 
   const back = <BackLink href="/lost-found" label="Lost & Found" />;
@@ -78,6 +80,7 @@ export function ItemDetail() {
 
   const mine = !!userId && item.posted_by === userId;
   const open = item.status === "open";
+  const atDps = item.tier === "valuable";
 
   return (
     <article className="space-y-5">
@@ -89,57 +92,34 @@ export function ItemDetail() {
             <TierBadge tier={item.tier} />
             <h1 className="text-3xl font-bold">{item.title}</h1>
             {item.description && <p>{item.description}</p>}
+            <p className="text-sm text-muted">Posted {timeAgo(item.created_at)}</p>
           </div>
-          <dl className="space-y-1 text-sm">
-            <div>
-              <dt className="inline font-semibold">Found at: </dt>
-              <dd className="inline">{whereFound(item, buildings)}</dd>
-            </div>
-            <div>
-              <dt className="inline font-semibold">Posted: </dt>
-              <dd className="inline">{timeAgo(item.created_at)}</dd>
-            </div>
-            {item.tier === "everyday" && item.expires_at && open && (
-              <div>
-                <dt className="inline font-semibold">Listed until: </dt>
-                <dd className="inline">{new Date(item.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" })}</dd>
-              </div>
-            )}
-          </dl>
 
           {error && <ErrorNote message={error} />}
 
           {!open ? (
-            <p className="rounded-md bg-success/10 p-3 font-semibold text-success">This item was returned to its owner.</p>
+            <p className="rounded-md bg-success/10 p-3 font-semibold text-success">This post was taken down: the item was picked up or moved.</p>
           ) : mine ? (
-            <div className="space-y-3 rounded-lg border border-line bg-surface p-4">
+            <div className="space-y-4 rounded-lg border border-line bg-surface p-4">
               <p className="font-semibold">You posted this item.</p>
-              {item.tier === "valuable" ? (
-                <DropoffCard dropoff={DPS_DROPOFF} title="Please take it to DPS if you haven't yet." />
-              ) : (
-                <>
-                  <p className="text-sm text-muted">When someone claims it, you&apos;ll chat in My handoffs. Mark it returned once they have it.</p>
-                  <button onClick={returned} disabled={busy} className="min-h-11 rounded-md border border-line px-4 font-semibold hover:bg-background disabled:opacity-60">
-                    Mark as returned
-                  </button>
-                </>
-              )}
+              <WhereNowChoice tier={item.tier} busy={busy} onChange={(t: ItemTier) => changeTier(item, t)} />
+              <button
+                onClick={() => run(async () => { await removePost(item.id); setItem({ ...item, status: "claimed" }); })}
+                disabled={busy}
+                className="min-h-11 rounded-md border border-line px-4 font-semibold hover:bg-background disabled:opacity-60"
+              >
+                Take this post down
+              </button>
+              <p className="text-xs text-muted">Do this once it&apos;s been picked up, or if you moved it somewhere else.</p>
             </div>
-          ) : pickup ? (
-            <DropoffCard dropoff={pickup} title="Pick it up at DPS Lost & Found">
-              <p className="text-sm">Valuables are kept at DPS, which checks who really owns them. Contact DPS to claim it.</p>
+          ) : atDps ? (
+            <DropoffCard dropoff={DPS_DROPOFF} title="The finder took this to DPS Lost & Found">
+              <p className="text-sm">If it&apos;s yours, go to DPS. It should be there: DPS keeps found items for 90 days and checks who really owns them.</p>
             </DropoffCard>
           ) : (
-            <div className="space-y-2">
-              <button onClick={claim} disabled={busy} className="min-h-11 w-full rounded-md bg-cardinal px-4 font-semibold text-white hover:bg-cardinal-dark disabled:opacity-60">
-                {busy ? "One sec…" : "This is mine"}
-              </button>
-              <p className="text-xs text-muted">
-                {item.tier === "valuable"
-                  ? "We'll show you where to pick it up."
-                  : "This opens a private chat with the finder. No phone numbers or emails are shared."}
-              </p>
-            </div>
+            <LeftHereCard item={item} buildings={buildings} title="The finder left it here:">
+              <p className="text-sm text-muted">Go soon, since someone may move it. If it&apos;s not there, ask the building&apos;s front desk or DPS Lost &amp; Found.</p>
+            </LeftHereCard>
           )}
         </div>
       </div>

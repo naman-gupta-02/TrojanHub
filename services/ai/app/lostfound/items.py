@@ -25,7 +25,8 @@ log = logging.getLogger(__name__)
 BUCKET = "photos"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_SIDE = 1280  # px; plenty for a phone screen, keeps Storage small
-EVERYDAY_DAYS = 14  # everyday items drop out of search after this
+EVERYDAY_DAYS = 14  # items left where they were found drop out of search after this
+DPS_DAYS = 90  # "Found items are kept for a total of 90 days" (dps.usc.edu/services/lost-and-found)
 EMBEDDING_COLUMNS = ("img_embedding", "text_embedding")
 
 
@@ -150,14 +151,14 @@ def create_item(
     # 2. Where it was found
     building_id = building_id or match_building(location_text)
 
-    # 3. Rules: valuables -> DPS drop-off; everyday items expire after 14 days
+    # 3. Rules. tier is where the item is now (the finder can switch it right after posting):
+    #    valuable -> taken to DPS (kept there 90 days); everyday -> left where it was found (14 days)
     item_id = str(uuid.uuid4())
     dropoff_point_id, dropoff = (None, None)
     if kind == "found" and result.tier == "valuable":
         dropoff_point_id, dropoff = pick_dropoff(building_id)
-    expires_at = None
-    if result.tier == "everyday":
-        expires_at = (datetime.now(timezone.utc) + timedelta(days=EVERYDAY_DAYS)).isoformat()
+    days = DPS_DAYS if result.tier == "valuable" else EVERYDAY_DAYS
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
 
     # 4. Save the photo, then the row (remove the photo again if the row fails)
     photo_path, photo_url = (None, None)

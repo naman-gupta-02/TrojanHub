@@ -1,14 +1,13 @@
-// P2 Vishwa: one found item + "This is mine".
-import type { Building, DropoffInfo, Item } from '@trojanhub/shared';
-import { ApiRequestError } from '@trojanhub/shared/api';
+// P2 Vishwa: one found item. Owners see right away where to get it: DPS, or the spot the finder
+// left it. The finder can switch that, or take the post down.
+import type { Building, Item, ItemTier } from '@trojanhub/shared';
 import { colors, spacing } from '@trojanhub/shared/theme';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
-import { api } from '@/lib/api';
-import { DPS_DROPOFF, currentUserId, getBuildings, getItem, isMock, markReturned, mockUserId, timeAgo, whereFound } from '@/components/lost-found/data';
-import { Button, DropoffCard, ErrorNote, ItemPhoto, SignInNotice, TierBadge, s } from '@/components/lost-found/ui';
+import { DPS_DROPOFF, currentUserId, getBuildings, getItem, isMock, mockUserId, removePost, setTier, timeAgo } from '@/components/lost-found/data';
+import { Button, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice, s } from '@/components/lost-found/ui';
 
 export default function ItemScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,52 +16,57 @@ export default function ItemScreen() {
   const [item, setItem] = useState<Item | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [buildings, setBuildings] = useState<Record<string, Building>>({});
-  const [pickup, setPickup] = useState<DropoffInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const uid = isMock ? mockUserId : await currentUserId();
+      if (cancelled) return;
       if (!uid) return setState('signed-out');
       setUserId(uid);
       try {
         const [it, bs] = await Promise.all([getItem(id), getBuildings()]);
+        if (cancelled) return;
         setBuildings(bs);
         setItem(it);
         setState(it ? 'ready' : 'missing');
       } catch (e) {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : String(e));
         setState('missing');
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  async function claim() {
+  async function run(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.items.claim(id);
-      if ('thread_id' in res) router.push(`/lost-found/chats/${res.thread_id}`);
-      else setPickup(res.pickup);
-    } catch (e) {
-      setError(e instanceof ApiRequestError ? e.message : "Couldn't claim right now. Is the AI service running?");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function returned() {
-    if (!item) return;
-    setBusy(true);
-    try {
-      await markReturned(item.id);
-      setItem({ ...item, status: 'claimed' });
+      await action();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Show the new choice right away, save in the background, undo if the save fails. */
+  function changeTier(prev: Item, tier: ItemTier) {
+    if (tier === prev.tier) return;
+    setItem({ ...prev, tier });
+    run(async () => {
+      try {
+        setItem(await setTier(prev, tier));
+      } catch (e) {
+        setItem(prev);
+        throw e;
+      }
+    });
   }
 
   if (state === 'loading') return <ActivityIndicator style={{ marginTop: spacing.xxl }} color={colors.cardinal} />;
@@ -80,44 +84,32 @@ export default function ItemScreen() {
       <TierBadge tier={item.tier} />
       <Text style={s.h1}>{item.title}</Text>
       {item.description ? <Text style={{ color: colors.ink }}>{item.description}</Text> : null}
-      <Text style={{ color: colors.ink }}>
-        <Text style={{ fontWeight: '700' }}>Found at: </Text>
-        {whereFound(item, buildings)}
-      </Text>
       <Text style={s.muted}>Posted {timeAgo(item.created_at)}</Text>
-      {item.tier === 'everyday' && item.expires_at && open ? (
-        <Text style={s.muted}>
-          Listed until {new Date(item.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' })}
-        </Text>
-      ) : null}
 
       {error && <ErrorNote message={error} />}
 
       {!open ? (
-        <Text style={{ color: colors.success, fontWeight: '700' }}>This item was returned to its owner.</Text>
+        <Text style={{ color: colors.success, fontWeight: '700' }}>This post was taken down: the item was picked up or moved.</Text>
       ) : mine ? (
         <View style={s.card}>
           <Text style={s.title}>You posted this item.</Text>
-          {item.tier === 'valuable' ? (
-            <DropoffCard dropoff={DPS_DROPOFF} title="Please take it to DPS if you haven't yet." />
-          ) : (
-            <>
-              <Text style={s.muted}>When someone claims it, you’ll chat in My handoffs. Mark it returned once they have it.</Text>
-              <Button label="Mark as returned" kind="secondary" onPress={returned} busy={busy} />
-            </>
-          )}
+          <WhereNowChoice tier={item.tier} busy={busy} onChange={(t: ItemTier) => changeTier(item, t)} />
+          <Button
+            label="Take this post down"
+            kind="secondary"
+            busy={busy}
+            onPress={() => run(async () => { await removePost(item.id); setItem({ ...item, status: 'claimed' }); })}
+          />
+          <Text style={s.small}>Do this once it’s been picked up, or if you moved it somewhere else.</Text>
         </View>
-      ) : pickup ? (
-        <DropoffCard dropoff={pickup} title="Pick it up at DPS Lost & Found">
-          <Text style={{ color: colors.ink }}>Valuables are kept at DPS, which checks who really owns them. Contact DPS to claim it.</Text>
+      ) : item.tier === 'valuable' ? (
+        <DropoffCard dropoff={DPS_DROPOFF} title="The finder took this to DPS Lost & Found">
+          <Text style={{ color: colors.ink }}>If it’s yours, go to DPS. It should be there: DPS keeps found items for 90 days and checks who really owns them.</Text>
         </DropoffCard>
       ) : (
-        <View style={{ gap: spacing.sm }}>
-          <Button label="This is mine" onPress={claim} busy={busy} />
-          <Text style={s.small}>
-            {item.tier === 'valuable' ? "We'll show you where to pick it up." : 'This opens a private chat with the finder. No phone numbers or emails are shared.'}
-          </Text>
-        </View>
+        <LeftHereCard item={item} buildings={buildings} title="The finder left it here:">
+          <Text style={s.muted}>Go soon, since someone may move it. If it’s not there, ask the building’s front desk or DPS Lost & Found.</Text>
+        </LeftHereCard>
       )}
     </ScrollView>
   );

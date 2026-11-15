@@ -1,7 +1,11 @@
 // P2 Vishwa: Lost & Found data for the app (mirrors apps/web/app/lost-found/_lib/data.ts).
 // Simple reads/writes go straight to Supabase (RLS protects them); anything AI goes through the
 // AI service. Without Supabase configured (mock mode), screens use packages/shared/mocks.
-import type { Building, DropoffInfo, Item, ItemSearchResponse, ItemTier, Message } from '@trojanhub/shared';
+//
+// Where a found item is now (the finder picks; the AI pre-selects):
+//   tier "valuable" -> the finder took it to DPS Lost & Found
+//   tier "everyday" -> the finder left it where they found it (location_text)
+import type { Building, DropoffInfo, Item, ItemSearchResponse, ItemTier } from '@trojanhub/shared';
 import { createApi, type UploadFile } from '@trojanhub/shared/api';
 import searchMock from '@trojanhub/shared/mocks/items_search.json';
 import * as ImagePicker from 'expo-image-picker';
@@ -11,6 +15,7 @@ import { API_URL } from '@/lib/api';
 import { getAccessToken, supabase } from '@/lib/supabase';
 
 export const isMock = !supabase;
+export const mockUserId = '00000000-0000-0000-0000-000000000001';
 
 const ITEM_COLUMNS =
   'id,kind,tier,title,description,photo_url,building_id,location_text,dropoff_point_id,status,posted_by,expires_at,created_at';
@@ -24,7 +29,8 @@ export const DPS_DROPOFF: DropoffInfo = {
   map: 'https://www.google.com/maps/search/?api=1&query=3667+McClintock+Ave%2C+Los+Angeles%2C+CA+90089',
   hours: null,
 };
-export const MEETING_SPOTS = ['Leavey Library entrance', 'USC Village', 'Doheny Library'];
+const DAY_MS = 24 * 3600 * 1000;
+const KEEP_DAYS: Record<ItemTier, number> = { valuable: 90, everyday: 14 }; // DPS keeps items 90 days
 
 // Photo uploads use React Native's built-in fetch: it understands {uri, name, type} files in
 // FormData, which expo/fetch (used by the main `api` for chat streaming) doesn't need to.
@@ -99,11 +105,12 @@ export function getBuildings(): Promise<Record<string, Building>> {
   return buildingsCache;
 }
 
+/** The finder says where the item is now: taken to DPS ('valuable') or left where found ('everyday'). */
 export async function setTier(item: Item, tier: ItemTier): Promise<Item> {
   const patch = {
     tier,
     dropoff_point_id: tier === 'valuable' ? DPS_DROPOFF_ID : null,
-    expires_at: tier === 'valuable' ? null : new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + KEEP_DAYS[tier] * DAY_MS).toISOString(),
   };
   if (!supabase) return { ...item, ...patch };
   const { data, error } = await supabase.from('items').update(patch).eq('id', item.id).select(ITEM_COLUMNS).single();
@@ -111,88 +118,11 @@ export async function setTier(item: Item, tier: ItemTier): Promise<Item> {
   return data as Item;
 }
 
-export async function markReturned(itemId: string): Promise<void> {
+/** The finder takes the post down (picked up, or no longer there), so it leaves search. */
+export async function removePost(itemId: string): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.from('items').update({ status: 'claimed' }).eq('id', itemId);
   if (error) throw new Error(error.message);
-}
-
-// ---------------------------------------------------------------------------
-// Handoff chats
-// ---------------------------------------------------------------------------
-export type ThreadSummary = {
-  id: string;
-  owner_id: string;
-  finder_id: string;
-  created_at: string;
-  item: Pick<Item, 'id' | 'title' | 'photo_url' | 'tier' | 'status'> | null;
-};
-
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
-const MOCK_THREAD: ThreadSummary = {
-  id: 'd0000000-0000-0000-0000-000000000001',
-  owner_id: DEMO_USER_ID,
-  finder_id: '00000000-0000-0000-0000-000000000002',
-  created_at: new Date().toISOString(),
-  item: { id: MOCK_ITEMS[0].id, title: MOCK_ITEMS[0].title, photo_url: null, tier: 'everyday', status: 'open' },
-};
-export const mockUserId = DEMO_USER_ID;
-
-const THREAD_COLUMNS = 'id,owner_id,finder_id,created_at,item:items(id,title,photo_url,tier,status)';
-
-export async function listThreads(): Promise<ThreadSummary[]> {
-  if (!supabase) return [MOCK_THREAD];
-  const { data, error } = await supabase.from('item_threads').select(THREAD_COLUMNS).order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as ThreadSummary[];
-}
-
-export async function getThread(id: string): Promise<ThreadSummary | null> {
-  if (!supabase) return id === MOCK_THREAD.id ? MOCK_THREAD : null;
-  const { data, error } = await supabase.from('item_threads').select(THREAD_COLUMNS).eq('id', id).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data as unknown as ThreadSummary | null;
-}
-
-export async function listMessages(threadId: string): Promise<Message[]> {
-  if (!supabase) {
-    return [{ id: 'm1', thread_id: threadId, sender_id: DEMO_USER_ID, body: 'Hi! I think this is mine. When could we meet to hand it off?', created_at: new Date().toISOString() }];
-  }
-  const { data, error } = await supabase
-    .from('messages')
-    .select('id,thread_id,sender_id,body,created_at')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as Message[];
-}
-
-export async function sendMessage(threadId: string, senderId: string, body: string): Promise<Message> {
-  const clean = body.trim();
-  if (!supabase) return { id: `local-${Date.now()}`, thread_id: threadId, sender_id: senderId, body: clean, created_at: new Date().toISOString() };
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({ thread_id: threadId, sender_id: senderId, body: clean })
-    .select('id,thread_id,sender_id,body,created_at')
-    .single();
-  if (error) throw new Error(error.message);
-  return data as Message;
-}
-
-export function subscribeToThread(threadId: string, onMessage: (m: Message) => void): () => void {
-  if (!supabase) return () => {};
-  const client = supabase;
-  // Unique name per subscription: reusing a name returns the already-subscribed channel, and
-  // adding callbacks to it throws (happens when a screen mounts twice, e.g. React StrictMode).
-  const channel = client
-    .channel(`lf-thread-${threadId}-${Math.random().toString(36).slice(2)}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `thread_id=eq.${threadId}` }, (payload) =>
-      onMessage(payload.new as Message),
-    )
-    .subscribe();
-  return () => {
-    client.removeChannel(channel);
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -230,4 +160,11 @@ export function whereFound(item: Item, buildings: Record<string, Building>): str
     .split(/\s+/)
     .some((w) => w.length >= 4 && !GENERIC_WORDS.has(w) && lower.includes(w));
   return named ? text : `${text} · ${b.name}`;
+}
+
+/** Google Maps link to where the item was left: the building's pin if we know it, else a USC search. */
+export function placeMapLink(item: Item, buildings: Record<string, Building>): string {
+  const b = item.building_id ? buildings[item.building_id] : undefined;
+  const query = b?.lat != null && b?.lng != null ? `${b.lat},${b.lng}` : `${item.location_text ?? ''} USC Los Angeles`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }

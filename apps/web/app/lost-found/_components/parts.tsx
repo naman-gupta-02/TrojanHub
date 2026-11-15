@@ -2,13 +2,14 @@
 import type { Building, DropoffInfo, Item, ItemTier } from "@trojanhub/shared";
 import Link from "next/link";
 
-import { matchLabel, timeAgo, whereFound } from "../_lib/data";
+import { matchLabel, placeMapLink, timeAgo, whereFound } from "../_lib/data";
 
+/** Where the item is now: "valuable" = taken to DPS, "everyday" = left where it was found. */
 export function TierBadge({ tier }: { tier: ItemTier }) {
   return tier === "valuable" ? (
-    <span className="inline-block rounded-full bg-cardinal px-2.5 py-0.5 text-xs font-semibold text-white">Valuable · at DPS</span>
+    <span className="inline-block rounded-full bg-cardinal px-2.5 py-0.5 text-xs font-semibold text-white">At DPS</span>
   ) : (
-    <span className="inline-block rounded-full bg-[#3b5b7a] px-2.5 py-0.5 text-xs font-semibold text-white">Everyday</span>
+    <span className="inline-block rounded-full bg-[#3b5b7a] px-2.5 py-0.5 text-xs font-semibold text-white">Left where found</span>
   );
 }
 
@@ -49,6 +50,31 @@ export function ItemCard({ item, buildings, score }: { item: Item; buildings: Re
   );
 }
 
+/** The finder's choice: taken to DPS, or left where found. The AI's suggestion is pre-selected. */
+export function WhereNowChoice({ tier, onChange, busy }: { tier: ItemTier; onChange: (t: ItemTier) => void; busy?: boolean }) {
+  const options: { value: ItemTier; title: string; hint: string }[] = [
+    { value: "valuable", title: "I'm taking it to DPS Lost & Found", hint: "Best for phones, wallets, IDs, keys, AirPods. DPS checks who really owns it." },
+    { value: "everyday", title: "I left it where I found it", hint: "Owners will see the place you wrote and go there." },
+  ];
+  return (
+    <fieldset className="space-y-2" disabled={busy}>
+      <legend className="mb-1 font-semibold">Where is the item now?</legend>
+      {options.map((o) => (
+        <label
+          key={o.value}
+          className={`flex min-h-11 cursor-pointer gap-3 rounded-lg border-2 bg-surface p-3 ${tier === o.value ? "border-cardinal" : "border-line"}`}
+        >
+          <input type="radio" name="where-now" value={o.value} checked={tier === o.value} onChange={() => onChange(o.value)} className="mt-1 accent-cardinal" />
+          <span>
+            <span className="block font-semibold">{o.title}</span>
+            <span className="block text-sm text-muted">{o.hint}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 export function DropoffCard({ dropoff, title, children }: { dropoff: DropoffInfo; title: string; children?: React.ReactNode }) {
   return (
     <div className="space-y-2 rounded-lg border-2 border-cardinal bg-surface p-4">
@@ -66,6 +92,25 @@ export function DropoffCard({ dropoff, title, children }: { dropoff: DropoffInfo
           </a>
         )}
       </div>
+    </div>
+  );
+}
+
+/** For items the finder left where they found them. */
+export function LeftHereCard({ item, buildings, title, children }: { item: Item; buildings: Record<string, Building>; title: string; children?: React.ReactNode }) {
+  return (
+    <div className="space-y-2 rounded-lg border-2 border-[#3b5b7a] bg-surface p-4">
+      <p className="font-semibold text-[#3b5b7a]">{title}</p>
+      <p className="text-lg font-medium">{whereFound(item, buildings)}</p>
+      {children}
+      <a
+        href={placeMapLink(item, buildings)}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex min-h-11 items-center rounded-md bg-[#3b5b7a] px-4 font-semibold text-white hover:opacity-90"
+      >
+        Open in Maps
+      </a>
     </div>
   );
 }

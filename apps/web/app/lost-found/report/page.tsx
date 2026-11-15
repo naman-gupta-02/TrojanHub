@@ -1,15 +1,15 @@
 "use client";
-// P2 Vishwa: "I found something". Photo + where it was found -> AI sorts it -> posted.
-// Valuables get the DPS drop-off card; when the AI isn't sure, the finder answers one question.
-import type { CreateItemResponse, Item, ItemTier } from "@trojanhub/shared";
+// P2 Vishwa: "I found something". Photo + where it was found -> posted. Then the finder says
+// where the item is now: taken to DPS, or left where found (the AI pre-selects one).
+import type { Building, CreateItemResponse, Item, ItemTier } from "@trojanhub/shared";
 import { ApiRequestError } from "@trojanhub/shared/api";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 
-import { BackLink, DropoffCard, ErrorNote, ItemPhoto, SignInNotice, TierBadge } from "../_components/parts";
-import { DPS_DROPOFF, currentUserId, isMock, setTier, shrinkPhoto } from "../_lib/data";
+import { BackLink, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice } from "../_components/parts";
+import { DPS_DROPOFF, currentUserId, getBuildings, isMock, setTier, shrinkPhoto } from "../_lib/data";
 
 export default function ReportFoundPage() {
   const [signedIn, setSignedIn] = useState<boolean | null>(isMock ? true : null);
@@ -111,7 +111,8 @@ export default function ReportFoundPage() {
         </label>
 
         <label className="block space-y-1">
-          <span className="font-semibold">Where did you find it?</span>
+          <span className="font-semibold">Where did you find it?</span>{" "}
+          <span className="text-sm text-muted">(be specific: if you leave it there, owners will go to this spot)</span>
           <input
             value={where}
             onChange={(e) => setWhere(e.target.value)}
@@ -126,7 +127,7 @@ export default function ReportFoundPage() {
         <button disabled={busy} className="min-h-11 w-full rounded-md bg-cardinal font-semibold text-white hover:bg-cardinal-dark disabled:opacity-60">
           {busy ? "Looking at your photo…" : "Post it"}
         </button>
-        <p className="text-xs text-muted">Your name, email and phone number are never shown. Owners contact you through in-app messages.</p>
+        <p className="text-xs text-muted">Your name, email and phone number are never shown.</p>
       </form>
     </section>
   );
@@ -134,17 +135,28 @@ export default function ReportFoundPage() {
 
 function Posted({ initial }: { initial: CreateItemResponse }) {
   const [item, setItem] = useState<Item>(initial.item);
-  const [asking, setAsking] = useState(!!initial.ask_tier);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dropoff = item.tier === "valuable" ? initial.dropoff ?? DPS_DROPOFF : null;
+  const [buildings, setBuildings] = useState<Record<string, Building>>({});
 
-  async function answer(tier: ItemTier) {
+  useEffect(() => {
+    getBuildings().then(setBuildings);
+  }, []);
+
+  /** Show the new choice right away, save in the background, undo if the save fails. */
+  async function choose(tier: ItemTier) {
+    if (tier === item.tier) return;
+    const prev = item;
+    setItem({ ...prev, tier });
+    setBusy(true);
     setError(null);
     try {
-      if (tier !== item.tier) setItem(await setTier(item, tier));
-      setAsking(false);
+      setItem(await setTier(prev, tier));
     } catch (e) {
+      setItem(prev);
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -163,39 +175,23 @@ function Posted({ initial }: { initial: CreateItemResponse }) {
         </div>
       </div>
 
-      {asking && (
-        <div className="space-y-3 rounded-lg border-2 border-gold bg-surface p-4">
-          <p className="font-semibold">Quick check: is this a valuable?</p>
-          <p className="text-sm text-muted">For example a phone, laptop, wallet, ID, keys, AirPods, or a bag that might have those inside.</p>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => answer("valuable")} className="min-h-11 rounded-md bg-cardinal px-4 font-semibold text-white hover:bg-cardinal-dark">
-              Yes, it&apos;s valuable
-            </button>
-            <button onClick={() => answer("everyday")} className="min-h-11 rounded-md border border-line px-4 font-semibold hover:bg-background">
-              No, it&apos;s an everyday item
-            </button>
-          </div>
-        </div>
-      )}
+      <WhereNowChoice tier={item.tier} onChange={choose} busy={busy} />
+      <p className="text-sm text-muted">
+        {initial.ask_tier
+          ? "We weren't sure about this one. If it might hold something valuable (like a bag), DPS is safer."
+          : `We picked this from your photo. Tap the other option if that's not right.`}
+      </p>
       {error && <ErrorNote message={error} />}
 
-      {!asking &&
-        (dropoff ? (
-          <DropoffCard dropoff={dropoff} title="This looks valuable. Please take it to DPS.">
-            <p className="text-sm">DPS keeps valuables safe and checks who really owns them. Owners who search will be told to pick it up there.</p>
-          </DropoffCard>
-        ) : (
-          <div className="rounded-lg border border-line bg-surface p-4 text-sm">
-            <p className="font-semibold">You can hold on to it.</p>
-            <p className="text-muted">
-              Owners who search will find it. When someone taps “This is mine”, you&apos;ll see a message in{" "}
-              <Link href="/lost-found/messages" className="font-semibold text-cardinal underline">
-                My handoffs
-              </Link>
-              . The post comes down after 14 days.
-            </p>
-          </div>
-        ))}
+      {item.tier === "valuable" ? (
+        <DropoffCard dropoff={initial.dropoff ?? DPS_DROPOFF} title="Please take it to DPS Lost & Found.">
+          <p className="text-sm">DPS keeps found items for 90 days and checks who really owns them. Owners who search will be sent there.</p>
+        </DropoffCard>
+      ) : (
+        <LeftHereCard item={item} buildings={buildings} title="Owners who search will be told it's here:">
+          <p className="text-sm text-muted">The post comes down after 14 days. If you move it, open your post and remove it.</p>
+        </LeftHereCard>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Link href={`/lost-found/${item.id}`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-surface px-4 font-semibold hover:bg-background">
