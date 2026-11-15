@@ -1,29 +1,45 @@
 """Search Lost & Found by words or by photo (P2, ARCHITECTURE.md §6, §7.2).
 
-Score = 0.7 x (match with the item's photo) + 0.3 x (match with its description)
-        + 0.1 if it was found in the building the owner names.
-Only open, unexpired found items are searched, including items posted without a photo (those
-are scored on their description alone). Top 10, best first.
+Hybrid score, 0..1:
+- item with a photo:    0.7 x CLIP(query, photo) + 0.3 x CLIP(query, description) + 0.25 x keywords
+- item without a photo: 0.5 x CLIP(query, description) + 0.5 x keywords
+  (CLIP is strong at words-vs-photo but noisy at words-vs-words: "umbrella" scored closer to
+  "brown leather wallet" than to "navy compact umbrella", so keywords carry text-only items)
+- + 0.1 if it was found in the building the owner names; capped at 1.
+"keywords" = share of the query's meaningful words found in the item's title + description.
+Filler ("lost my", "anyone find", "at Leavey") is stripped before searching.
 
-Note: the `match_items` SQL function skips items without a photo and doesn't check expiry, so
-this ranks in Python instead. Fine for a few hundred items; move to SQL if it grows.
+Only open, unexpired found items are searched, including items posted without a photo.
+Top 10, best first. The `match_items` SQL function skips items without a photo and doesn't check
+expiry, so this ranks in Python instead. Fine for a few hundred items; move to SQL if it grows.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 import numpy as np
 
 from app.core.supabase import get_supabase
 from app.lostfound import clip
-from app.lostfound.items import MAX_UPLOAD_BYTES, ItemError, match_building, public_item
+from app.lostfound.items import MAX_UPLOAD_BYTES, ItemError, _buildings, match_building, public_item
 
 TOP_K = 10
-MIN_SCORE = 0.2  # below this it's almost surely a different item; "no match" beats a wrong one
+MIN_SCORE = 0.3  # below this it's almost surely a different item; "no match" beats a wrong one
 BUILDING_BONUS = 0.1
 W_PHOTO, W_TEXT = 0.7, 0.3
+W_KEYWORDS_WITH_PHOTO = 0.25
+W_KEYWORDS_NO_PHOTO = 0.5
+
+# Words that say nothing about the item itself.
+_FILLER = {
+    "lost", "lose", "losing", "missing", "misplaced", "left", "forgot", "my", "mine", "a", "an", "the", "i", "me",
+    "did", "does", "do", "anyone", "anybody", "someone", "somebody", "find", "found", "see", "seen", "saw", "has",
+    "have", "had", "please", "help", "with", "at", "in", "on", "near", "by", "of", "for", "to", "from", "it", "its",
+    "is", "was", "this", "that", "any", "some", "and", "or", "around", "today", "yesterday",
+}
 
 # Raw CLIP similarities sit on different scales depending on what's compared (a description
 # that doesn't match scores higher than a photo that does). Each is mapped to 0..1 with
@@ -40,6 +56,32 @@ SCALES = {
 def _scaled(kind: str, sim: float) -> float:
     lo, hi = SCALES[kind]
     return float(np.clip((sim - lo) / (hi - lo), 0.0, 1.0))
+
+
+def _stem(word: str) -> str:
+    """Tiny plural folding so "keys" ~ "key" and "glasses" ~ "glass"."""
+    if len(word) > 4 and word.endswith(("ses", "xes")):
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
+def _words(text: str | None) -> set[str]:
+    return {_stem(w) for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if w not in _FILLER and len(w) > 1}
+
+
+def _building_words(building_id: str | None) -> set[str]:
+    for b in _buildings() if building_id else ():
+        if b["id"] == building_id:
+            return _words(f"{b['code']} {b['name']}")
+    return set()
+
+
+def _keyword_score(query_words: set[str], row: dict) -> float:
+    if not query_words:
+        return 0.0
+    return len(query_words & _words(f"{row.get('title')} {row.get('description')}")) / len(query_words)
 
 
 def _vec(value) -> np.ndarray | None:
@@ -63,19 +105,21 @@ def _open_found_items() -> list[dict]:
     return res.data or []
 
 
-def _rank(query: np.ndarray, *, from_photo: bool, building_id: str | None) -> dict:
+def _rank(query: np.ndarray, *, from_photo: bool, building_id: str | None, query_words: set[str] | None = None) -> dict:
     src = "photo" if from_photo else "text"
     scored: list[tuple[float, dict]] = []
     for row in _open_found_items():
         img, txt = _vec(row.get("img_embedding")), _vec(row.get("text_embedding"))
         p = _scaled(f"{src}>photo", float(query @ img)) if img is not None else None
         t = _scaled(f"{src}>desc", float(query @ txt)) if txt is not None else None
-        if p is not None and t is not None:
-            score = W_PHOTO * p + W_TEXT * t
-        elif p is not None or t is not None:
-            score = p if p is not None else t
+        k = _keyword_score(query_words, row) if query_words else None
+        if p is not None:
+            score = W_PHOTO * p + W_TEXT * (t or 0.0) + W_KEYWORDS_WITH_PHOTO * (k or 0.0)
+        elif t is not None:
+            score = (1 - W_KEYWORDS_NO_PHOTO) * t + W_KEYWORDS_NO_PHOTO * k if k is not None else t
         else:
             continue
+        score = min(1.0, score)
         if building_id and row.get("building_id") == building_id:
             score = min(1.0, score + BUILDING_BONUS)
         if score >= MIN_SCORE:
@@ -91,7 +135,16 @@ def search_text(q: str, building_id: str | None = None) -> dict:
     if not q:
         raise ItemError(422, "missing_query", "Describe the item you lost, e.g. 'black Hydro Flask'.")
     building_id = building_id or match_building(q)
-    return _rank(clip.embed_text(f"a photo of {q}"), from_photo=False, building_id=building_id)
+    # "lost my airpods at Leavey" -> "airpods" (the building counts through BUILDING_BONUS instead)
+    skip = _FILLER | _building_words(building_id)
+    kept = [w for w in re.findall(r"[A-Za-z0-9'-]+", q) if w.lower() not in skip and _stem(w.lower()) not in skip]
+    cleaned = " ".join(kept) or q
+    return _rank(
+        clip.embed_text(f"a photo of {cleaned}"),
+        from_photo=False,
+        building_id=building_id,
+        query_words=_words(cleaned) - skip,
+    )
 
 
 def search_photo(photo: bytes) -> dict:
