@@ -1,7 +1,7 @@
 // P3 Parnavi: shared pieces for the Home and Events/Deals/Rewards screens.
 import type { Deal, Event, EventCategory } from '@trojanhub/shared/types';
 import { colors, fontSize, minTapTarget, radius, spacing } from '@trojanhub/shared/theme';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
@@ -206,27 +206,30 @@ export function EventCard({ event, reason }: { event: Event; reason?: string }) 
   const cat = categoryInfo(event.category);
   const live = untilLabel(event.starts_at, event.ends_at) === 'Happening now';
   return (
-    <Link href={{ pathname: '/events/[id]', params: { id: event.id } }} asChild>
-      <Pressable style={({ pressed }) => [s.card, pressed && s.cardPressed]} accessibilityRole="button" accessibilityLabel={`${event.title}, ${relativeDay(event.starts_at)} ${fmtTime(event.starts_at)}`}>
-        <DateBlock iso={event.starts_at} />
-        <View style={s.cardBody}>
-          {reason && <Text style={s.reason}>{reason}</Text>}
-          <Text style={s.cardTitle} numberOfLines={2}>
-            {cat.emoji} {event.title}
-          </Text>
-          <Text style={s.cardMeta} numberOfLines={1}>
-            {timeRange(event.starts_at, event.ends_at)}
-            {event.location_text ? ` · ${event.location_text}` : ''}
-          </Text>
-          <View style={s.chips}>
-            {live && <Chip tone="green">● Now</Chip>}
-            {event.has_freebie && <Chip tone="gold">🎁 {event.freebie_desc ?? 'Freebie'}</Chip>}
-            {!event.is_free && <Chip>Ticketed</Chip>}
-            {event.org_verified && <Chip tone="cardinal">✓ {event.org_name}</Chip>}
-          </View>
+    // Not <Link asChild>: it drops a Pressable's style function, and the card lost its border and layout
+    <Pressable
+      onPress={() => router.push({ pathname: '/events/[id]', params: { id: event.id } })}
+      style={({ pressed }) => [s.card, pressed && s.cardPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`${event.title}, ${relativeDay(event.starts_at)} ${fmtTime(event.starts_at)}`}>
+      <DateBlock iso={event.starts_at} />
+      <View style={s.cardBody}>
+        {reason && <Text style={s.reason}>{reason}</Text>}
+        <Text style={s.cardTitle} numberOfLines={2}>
+          {cat.emoji} {event.title}
+        </Text>
+        <Text style={s.cardMeta} numberOfLines={1}>
+          {timeRange(event.starts_at, event.ends_at)}
+          {event.location_text ? ` · ${event.location_text}` : ''}
+        </Text>
+        <View style={s.chips}>
+          {live && <Chip tone="green">● Now</Chip>}
+          {event.has_freebie && <Chip tone="gold">🎁 {event.freebie_desc ?? 'Freebie'}</Chip>}
+          {!event.is_free && <Chip>Ticketed</Chip>}
+          {event.org_verified && <Chip tone="cardinal">✓ {event.org_name}</Chip>}
         </View>
-      </Pressable>
-    </Link>
+      </View>
+    </Pressable>
   );
 }
 
@@ -330,12 +333,16 @@ export function Segmented<T extends string>({ value, onChange, options }: { valu
 
 export const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl * 2 },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: 120 }, // room to scroll the last card above the Tommy button
   h1: { fontSize: fontSize.xxl, fontWeight: '800', color: colors.ink },
   sub: { fontSize: fontSize.md, color: colors.muted },
   section: { fontSize: fontSize.lg, fontWeight: '700', color: colors.ink, marginTop: spacing.sm },
-  card: { flexDirection: 'row', gap: spacing.md, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: radius.lg, padding: spacing.md },
-  cardPressed: { opacity: 0.85 },
+  card: {
+    flexDirection: 'row', gap: spacing.md, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1,
+    borderRadius: radius.lg, padding: spacing.md,
+    shadowColor: '#7A0000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3,
+  },
+  cardPressed: { opacity: 0.9, transform: [{ scale: 0.98 }], borderColor: colors.cardinal },
   cardBody: { flex: 1, gap: spacing.xs },
   cardTitle: { fontSize: fontSize.md, fontWeight: '700', color: colors.ink },
   cardMeta: { fontSize: fontSize.sm, color: colors.muted },

@@ -1,12 +1,16 @@
 // P1 Naman: floating "Chat with Tommy" button over every tab, with a phrase suggestion for that page.
+// It shows the full label for the first few seconds, then shrinks to a round Tommy face so it
+// covers less of the page.
 import { colors, fontSize, radius, spacing } from "@trojanhub/shared/theme";
 import { router, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { promptsFor } from "@/components/chat/chatState";
 
 import { TommyAvatar } from "./TommyAvatar";
+
+const EXPANDED_MS = 5000;
 
 export function TommyFab() {
   const path = usePathname();
@@ -15,6 +19,15 @@ export function TommyFab() {
   );
   const teaser = nudge && nudge.path === path ? nudge.text : null;
   const pulse = useRef(new Animated.Value(1)).current;
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCompact(true);
+    }, EXPANDED_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -73,15 +86,18 @@ export function TommyFab() {
           onPress={() => openTommy()}
           style={({ pressed }) => [
             styles.fab,
+            compact && styles.fabCompact,
             pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
           ]}
           accessibilityRole="button"
           accessibilityLabel="Chat with Tommy, our AI"
         >
-          <TommyAvatar size={40} />
-          <Text style={styles.fabText}>
-            Chat with <Text style={{ color: colors.gold }}>Tommy</Text>
-          </Text>
+          <TommyAvatar size={compact ? 44 : 40} />
+          {!compact && (
+            <Text style={styles.fabText}>
+              Chat with <Text style={{ color: colors.gold }}>Tommy</Text>
+            </Text>
+          )}
         </Pressable>
       </Animated.View>
     </View>
@@ -134,5 +150,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },
+  fabCompact: { gap: 0, paddingVertical: 4, paddingLeft: 4, paddingRight: 4 },
   fabText: { color: "#fff", fontWeight: "800", fontSize: fontSize.sm },
 });
