@@ -7,6 +7,7 @@ The global USE_MOCKS stays true until every feature is real, so P3 decides on it
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.config import REPO_ROOT, SERVICE_DIR, settings
@@ -26,6 +27,16 @@ class P3Settings(BaseSettings):
     digest_hour: int = 8  # LA time
     reminders_every_min: int = 10
     cron_tick_seconds: int = 60
+
+    @model_validator(mode="after")
+    def _api_url_defaults_to_web_url(self) -> "P3Settings":
+        # On Replit the website and the API share one address (API under /api, see DEPLOY.md),
+        # so setting PUBLIC_WEB_URL alone is enough for the links in emails and .ics files.
+        if "public_api_url" not in self.model_fields_set and "localhost" not in self.public_web_url:
+            self.public_api_url = self.public_web_url
+        self.public_web_url = self.public_web_url.rstrip("/")
+        self.public_api_url = self.public_api_url.rstrip("/")
+        return self
 
 
 @lru_cache

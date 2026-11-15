@@ -95,7 +95,7 @@ def render_html(items: list[dict], name: str | None = None, user_id: str | None 
     count = f"{len(items)} free thing{'s' if len(items) != 1 else ''} on campus today"
     unsub = ""
     if user_id:
-        unsub = (f' · <a href="{p3.public_api_url}/api/notify/unsubscribe?u={user_id}&s={unsubscribe_sig(user_id)}" '
+        unsub = (f' · <a href="{p3.public_api_url}/api/notify/unsubscribe?u={user_id}&amp;s={unsubscribe_sig(user_id)}" '
                  f'style="color:{MUTED}">Unsubscribe</a>')
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -112,7 +112,7 @@ def render_html(items: list[dict], name: str | None = None, user_id: str | None 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{''.join(rows)}</table>
     </td></tr>
     <tr><td align="center" style="padding:8px 0 0 0">
-      <a href="{p3.public_web_url}/events?freebie=true" style="display:inline-block;background:{CARDINAL};color:#fff;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px;text-decoration:none">See everything free today</a>
+      <a href="{p3.public_web_url}/events?freebie=true&amp;day={la_today().isoformat()}" style="display:inline-block;background:{CARDINAL};color:#fff;font-weight:700;font-size:15px;padding:12px 24px;border-radius:999px;text-decoration:none">See everything free today</a>
     </td></tr>
     <tr><td align="center" style="color:{MUTED};font-size:12px;padding:24px 0">
       You get this because you turned on freebie alerts in TrojanHub. For Trojans, by Trojans.{unsub}
@@ -155,18 +155,29 @@ def run() -> dict:
         mine = for_user(items, prof.get("notify_categories"))
         if not mine:
             continue
+        can_push = bool(prof.get("notify_push") and prof.get("expo_push_token"))
+        can_email = bool(prof.get("notify_email") and email_configured())
+        if not (can_push or can_email):
+            continue  # nothing we can deliver; don't use up today's slot
+        # claim first, so two runs at once can't both send
         if not store.log_notification(prof["id"], "digest", ref):
             skipped += 1
             continue
-        if prof.get("notify_push") and prof.get("expo_push_token"):
-            sent_push += send_push([prof["expo_push_token"]], subject(mine), _push_body(mine), {"screen": "home"})
-        if prof.get("notify_email") and email_configured():
+        delivered = 0
+        if can_push:
+            n = send_push([prof["expo_push_token"]], subject(mine), _push_body(mine), {"screen": "home"})
+            sent_push += n
+            delivered += n
+        if can_email:
             to = store.user_email(prof["id"])
             if to:
                 try:
                     send_email(to, subject(mine), render_html(mine, prof.get("name"), prof["id"]), render_text(mine))
                     sent_email += 1
+                    delivered += 1
                 except EmailError as e:
                     errors.append(str(e))
+        if not delivered:
+            store.unlog_notification(prof["id"], "digest", ref)  # failed: the next run tries again
     return {"sent": sent_email + sent_push, "email": sent_email, "push": sent_push, "already_sent": skipped,
             "items": len(items), "errors": errors[:5], "ran_at": now_utc().isoformat()}

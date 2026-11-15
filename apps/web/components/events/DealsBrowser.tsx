@@ -5,14 +5,15 @@ import { useState } from "react";
 
 import { api } from "@/lib/api";
 
-import { CardSkeleton, DealCard, EmptyState, ErrorState, SectionTitle, btn, useApi } from "./kit";
+import { CardSkeleton, DealCard, EmptyState, ErrorState, SectionTitle, btn, useApi, useDebounced } from "./kit";
 
 type Tab = "all" | "one_time" | "ongoing";
 
 export function DealsBrowser() {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<Tab>("all");
-  const deals = useApi(() => api.deals.search({ q: q || undefined, active: true }), q);
+  const query = useDebounced(q.trim());
+  const deals = useApi(() => api.deals.search({ q: query || undefined, active: true }), query);
 
   const list = (deals.data?.deals ?? []).filter((d) => tab === "all" || d.kind === tab);
   const oneTime = list.filter((d) => d.kind === "one_time");

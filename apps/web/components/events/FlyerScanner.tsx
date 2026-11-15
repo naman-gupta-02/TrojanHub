@@ -201,7 +201,7 @@ export function FlyerScanner() {
           <button onClick={() => fileInput.current?.click()} className={btn.primary}>
             Choose a photo
           </button>
-          <input ref={fileInput} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} aria-label="Flyer photo" />
+          <input ref={fileInput} type="file" accept="image/*" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} aria-label="Flyer photo" />
         </div>
         {error && <p role="alert" className="rounded-xl bg-danger/5 p-3 text-sm text-danger">{error}</p>}
         <p className="text-center text-sm text-muted">

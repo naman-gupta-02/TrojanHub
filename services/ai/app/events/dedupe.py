@@ -2,6 +2,8 @@
 
 Two flyers for one event rarely have identical titles ("Diwali Night 2026" vs "DIWALI NIGHT
 - SASA presents"), so titles are normalized and compared two ways; the better score wins.
+Generic words ("night", "workshop", "mixer") don't count on their own: "Game Night" and
+"Hack Night" in the same room are two different events.
 """
 
 import re
@@ -17,7 +19,14 @@ TITLE_MATCH = 0.85
 LOOSE_TITLE_MATCH = 0.6
 LOOSE_WINDOW = timedelta(minutes=30)
 
-_FILLER = {"the", "a", "an", "and", "at", "usc", "presents", "present", "annual", "join", "us", "for", "with", "mock"}
+_FILLER = {"the", "a", "an", "and", "at", "usc", "presents", "present", "annual", "join", "us", "for", "with", "of", "by", "our"}
+# Words that say what kind of event it is, not which one
+_GENERIC = {
+    "night", "day", "event", "party", "social", "mixer", "meeting", "session", "info", "workshop", "prep", "panel",
+    "talk", "fair", "club", "break", "study", "jam", "free", "open", "mock", "interview", "interviews", "lunch",
+    "dinner", "breakfast", "screening", "discussion", "practice", "training", "seminar", "lecture", "series",
+    "night's", "hangout", "kickoff", "watch", "show", "festival", "celebration", "game", "games",
+}
 
 
 def _words(text: str | None) -> list[str]:
@@ -25,17 +34,37 @@ def _words(text: str | None) -> list[str]:
     return [w for w in words if w not in _FILLER and not re.fullmatch(r"20\d\d", w)]
 
 
+def _distinctive(words: list[str]) -> set[str]:
+    return {w for w in words if w not in _GENERIC and len(w) > 1}
+
+
+def _similar_word(a: str, b: str) -> bool:
+    return a == b or (min(len(a), len(b)) >= 4 and SequenceMatcher(None, a, b).ratio() >= 0.8)
+
+
+def _shares_distinctive(da: set[str], db: set[str]) -> bool:
+    return any(_similar_word(a, b) for a in da for b in db)
+
+
 def title_similarity(a: str | None, b: str | None) -> float:
     wa, wb = _words(a), _words(b)
     if not wa or not wb:
         return 0.0
+    da, db = _distinctive(wa), _distinctive(wb)
     sequence = SequenceMatcher(None, " ".join(wa), " ".join(wb)).ratio()
+    if da and db and not _shares_distinctive(da, db):
+        return 0.0  # "Game Night" vs "Hack Night": nothing specific in common
+    if not da or not db:
+        # only generic words ("Study Break"): must be practically the same title
+        return sequence if sequence >= 0.9 else 0.0
     sa, sb = set(wa), set(wb)
     overlap = len(sa & sb) / len(sa | sb)
-    # "Diwali Night" inside "Diwali Night - SASA": the org name shouldn't hide the match
+    # "Diwali Night" inside "Diwali Night - SASA": the org name shouldn't hide the match,
+    # but "Career Fair" inside "Career Fair Prep Workshop" is a different event
     contained = 0.0
-    if min(len(sa), len(sb)) >= 2:
-        contained = 0.95 * len(sa & sb) / min(len(sa), len(sb))
+    small, big = (sa, sb) if len(sa) <= len(sb) else (sb, sa)
+    if len(small) >= 2 and small <= big and not (big - small) & _GENERIC:
+        contained = 0.95
     return max(sequence, overlap, contained)
 
 

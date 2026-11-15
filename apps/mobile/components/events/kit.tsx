@@ -40,8 +40,16 @@ export function untilLabel(start: string, end: string | null = null): string {
   return relativeDay(start);
 }
 
+/** Same window the API allows for "I'm here": 30 min before the start until 30 min after the end */
+export function canCheckIn(start: string, end: string | null = null): boolean {
+  const now = Date.now();
+  const s = new Date(start).getTime();
+  const e = end ? new Date(end).getTime() : s + 2 * 3_600_000;
+  return now >= s - 30 * 60_000 && now <= e + 30 * 60_000;
+}
+
 export function dateParts(iso: string): { weekday: string; day: string; month: string } {
-  const p = Object.fromEntries(partsFmt.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  const p =Object.fromEntries(partsFmt.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
   return { weekday: p.weekday, day: p.day, month: p.month };
 }
 
@@ -92,6 +100,26 @@ export function useApi<T>(load: () => Promise<T>, key = '') {
     reload: useCallback(() => setNonce((n) => n + 1), []),
     setData: (data: T) => setResult({ stamp, data }),
   };
+}
+
+/** `value`, but only after it stopped changing for `ms` (search boxes: one request per pause, not per key) */
+export function useDebounced<T>(value: T, ms = 300): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return settled;
+}
+
+/** Re-renders every `ms`, for things that change with the clock ("check-in is open") */
+export function useNow(ms = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
 }
 
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));

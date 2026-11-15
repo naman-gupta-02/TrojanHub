@@ -43,9 +43,11 @@ import type {
   FlyerUploadResponse,
   ItemSearchParams,
   ItemSearchResponse,
+  MyCheckinsResponse,
   MyComplaintsResponse,
   MyEventsResponse,
   NotifyPrefs,
+  PerksResponse,
   RewardsProgressResponse,
   SaveEventRequest,
   SaveEventResponse,
@@ -202,6 +204,8 @@ export function createApi(opts: ApiOptions) {
     },
     rewards: {
       progress: () => request<RewardsProgressResponse>("GET", "/api/rewards/progress"),
+      perks: () => request<PerksResponse>("GET", "/api/rewards/perks"),
+      checkins: () => request<MyCheckinsResponse>("GET", "/api/rewards/checkins"),
     },
     feed: () => request<FeedResponse>("GET", "/api/feed"),
     notify: {

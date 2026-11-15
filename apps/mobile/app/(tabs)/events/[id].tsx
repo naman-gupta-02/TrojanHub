@@ -4,9 +4,9 @@ import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { Button, Chip, ErrorBox, Loading, categoryInfo, errorMessage, fmtTime, relativeDay, s, timeRange, untilLabel, useApi } from '@/components/events/kit';
+import { Button, Chip, ErrorBox, Loading, canCheckIn, categoryInfo, errorMessage, fmtTime, relativeDay, s, timeRange, untilLabel, useApi, useNow } from '@/components/events/kit';
 import { api } from '@/lib/api';
 
 export default function EventScreen() {
@@ -101,8 +101,9 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
           <Text style={s.cardTitle}>🏆 Counts toward rewards</Text>
           {d.counts_toward.map((p) => (
             <Text key={p.program_id} style={{ color: colors.ink }}>
-              {p.name}: {p.attended} of {p.required}
-              {p.attended + 1 === p.required && !d.attended ? <Text style={{ color: colors.cardinal, fontWeight: '700' }}> · this one completes it!</Text> : null}
+              {p.style === 'entries' ? `${p.name}: ${p.attended} entr${p.attended === 1 ? 'y' : 'ies'} so far` : `${p.name}: ${p.attended} of ${p.required}`}
+              {p.style === 'entries' && !d.attended ? <Text style={{ color: colors.cardinal, fontWeight: '700' }}> · checking in adds one</Text> : null}
+              {p.style !== 'entries' && p.attended + 1 === p.required && !d.attended ? <Text style={{ color: colors.cardinal, fontWeight: '700' }}> · this one completes it!</Text> : null}
             </Text>
           ))}
         </View>
@@ -127,7 +128,42 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
       </View>
 
       <CheckIn detail={d} onChange={onChange} />
+      <OrganizerCode eventId={e.id} />
     </>
+  );
+}
+
+function OrganizerCode({ eventId }: { eventId: string }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function show() {
+    setError(null);
+    try {
+      setCode((await api.events.checkinCode(eventId)).code);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  return (
+    <View style={[s.card, { flexDirection: 'column', gap: spacing.sm }]}>
+      <Pressable onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityState={{ expanded: open }} style={{ minHeight: 44, justifyContent: 'center' }}>
+        <Text style={{ fontWeight: '700', color: colors.ink }}>{open ? '▾' : '▸'} For organizers: show check-in code</Text>
+      </Pressable>
+      {open && (
+        <>
+          {code ? (
+            <Text style={{ backgroundColor: colors.ink, color: colors.gold, borderRadius: radius.md, paddingVertical: spacing.lg, textAlign: 'center', fontSize: 30, fontWeight: '800', letterSpacing: 8 }}>{code}</Text>
+          ) : (
+            <Button title="Show code" kind="secondary" onPress={show} />
+          )}
+          <Text style={s.cardMeta}>Put it on a slide at the door. Attendees enter it to check in and earn reward credit.</Text>
+          {error && <Text style={{ color: colors.danger, fontSize: fontSize.sm }}>{error}</Text>}
+        </>
+      )}
+    </View>
   );
 }
 
@@ -177,7 +213,8 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CheckinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const live = untilLabel(detail.event.starts_at, detail.event.ends_at) === 'Happening now';
+  useNow(); // re-check every 30 s, so "I'm here!" appears without leaving the screen
+  const live = canCheckIn(detail.event.starts_at, detail.event.ends_at);
 
   async function checkIn(withCode?: string) {
     setBusy(true);
@@ -206,7 +243,9 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
         <Text style={{ color: colors.success, fontWeight: '700' }}>✓ You checked in</Text>
         {result?.rewards.map((r) => (
           <Text key={r.program.id} style={{ color: colors.ink }}>
-            {r.attended >= r.required ? `🎉 ${r.program.name} complete! Claim your reward from ${r.program.office}.` : `${r.program.name}: ${r.attended} of ${r.required}, ${r.required - r.attended} to go`}
+            {r.style === 'entries'
+              ? `🎟️ ${r.program.name}: ${r.attended} entr${r.attended === 1 ? 'y' : 'ies'}`
+              : r.attended >= r.required ? `🎉 ${r.program.name} complete! Claim your reward from ${r.program.office}.` : `${r.program.name}: ${r.attended} of ${r.required}, ${r.required - r.attended} to go`}
           </Text>
         ))}
       </View>
