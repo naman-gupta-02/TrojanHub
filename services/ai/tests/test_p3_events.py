@@ -149,6 +149,19 @@ def test_ics_folds_lines_and_defaults_to_two_hours():
     assert "\\;" in text and "\\," in text
 
 
+def test_public_links_need_only_the_web_url(monkeypatch):
+    from app.events.settings import P3Settings
+
+    for var in ("PUBLIC_WEB_URL", "PUBLIC_API_URL"):
+        monkeypatch.delenv(var, raising=False)
+    one = P3Settings(_env_file=None, public_web_url="https://trojanhub.replit.app/")
+    assert one.public_web_url == one.public_api_url == "https://trojanhub.replit.app"
+    two = P3Settings(_env_file=None, public_web_url="https://web.example", public_api_url="https://api.example")
+    assert two.public_api_url == "https://api.example"
+    local = P3Settings(_env_file=None)
+    assert local.public_api_url == "http://localhost:8000"
+
+
 # ---------------------------------------------------------------------------
 # Routes with a fake database
 # ---------------------------------------------------------------------------
