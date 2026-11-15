@@ -141,6 +141,9 @@ export interface Event {
   flyer_url: string | null;
   status: EventStatus;
   created_at: ISODate;
+  // Joined from orgs by the API (P3); absent in raw Supabase rows
+  org_name?: string | null;
+  org_verified?: boolean;
 }
 
 export interface Deal {
@@ -333,6 +336,121 @@ export interface FlyerScanResponse {
   fields: FlyerFields;
   missing: (keyof FlyerFields)[];
   duplicate_of?: UUID;
+  /** 0..1 per filled field; the form highlights anything under ~0.7 for a second look */
+  confidence?: Partial<Record<keyof FlyerFields, number>>;
+  /** Extra things the flyer said that aren't FlyerFields */
+  extra?: {
+    description: string | null;
+    ticket_url: string | null;
+    tickets_open_at: ISODate | null;
+    how_to_claim: string | null; // deals
+  };
+  duplicate?: { id: UUID; title: string; starts_at: ISODate };
+}
+
+/** POST /flyers/upload is multipart/form-data: photo (file) */
+export interface FlyerUploadResponse {
+  image_url: string; // public URL (or a data: URL in mock mode); pass to /flyers/scan and as flyer_url
+}
+
+/** GET /events/{id} */
+export interface EventDetailResponse {
+  event: Event;
+  saved: boolean;
+  registered: boolean;
+  attended: boolean;
+  counts_toward: { program_id: UUID; name: string; attended: number; required: number }[];
+  google_calendar_url: string;
+  ics_url: string;
+}
+
+/** POST /events. 409 {error: {code: "duplicate", duplicate_of}} unless force: true */
+export interface CreateEventRequest {
+  title: string;
+  description?: string | null;
+  starts_at: ISODate;
+  ends_at?: ISODate | null;
+  location_text?: string | null;
+  building_id?: UUID | null;
+  category?: EventCategory;
+  is_free?: boolean;
+  has_freebie?: boolean;
+  freebie_desc?: string | null;
+  register_url?: string | null;
+  ticket_url?: string | null;
+  tickets_open_at?: ISODate | null;
+  org_name?: string | null;
+  flyer_url?: string | null;
+  force?: boolean;
+}
+
+export interface CreateEventResponse {
+  event: Event;
+}
+
+export interface CreateDealRequest {
+  title: string;
+  description?: string | null;
+  kind: DealKind;
+  how_to_claim?: string | null;
+  link?: string | null;
+  starts_at?: ISODate | null;
+  expires_at?: ISODate | null;
+}
+
+export interface CreateDealResponse {
+  deal: Deal;
+}
+
+export interface DealVoteRequest {
+  still_active: boolean;
+}
+
+export interface DealVoteResponse {
+  still_active_votes: number;
+}
+
+/** POST /events/{id}/checkin: with the organizer's QR code, or "I'm here" while the event is on */
+export interface CheckinRequest {
+  code?: string;
+}
+
+export interface CheckinResponse {
+  checked_in: true;
+  already: boolean;
+  rewards: RewardProgress[]; // only programs this event counts toward, already updated
+}
+
+export interface CheckinCodeResponse {
+  code: string;
+  checkin_url: string; // trojanhub://checkin/{id}?code=...  (put this in the QR)
+}
+
+/** GET /me/events */
+export interface MyEventsResponse {
+  saved: { event: Event; registered: boolean; attended: boolean }[];
+}
+
+/** POST /notify/digest-now (admins): the on-stage "Send digest now" button */
+export interface DigestNowRequest {
+  email?: string; // default: the signed-in admin's email
+  everyone?: boolean; // true = run the real 8 AM job now
+}
+
+export interface DigestNowResponse {
+  sent: number;
+  to?: string;
+  items?: number;
+  skipped_reason?: string;
+}
+
+/** GET / PATCH /me/notify. Empty notify_categories = everything. "deals" covers one-time deals. */
+export type NotifyCategory = EventCategory | "deals";
+
+export interface NotifyPrefs {
+  notify_email: boolean;
+  notify_push: boolean;
+  notify_categories: NotifyCategory[];
 }
 
 export interface EventSearchParams {

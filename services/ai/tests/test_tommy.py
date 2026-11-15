@@ -84,6 +84,12 @@ def llm(monkeypatch):
         monkeypatch.setattr(agent, "get_async_client", lambda: fake)
         monkeypatch.setattr(agent, "model_name", lambda vision=False: "fake-model")
         monkeypatch.setattr(settings, "llm_model", "fake-model")
+        # Feature code that calls an LLM on its own (flyer reader, complaint sorter) must not reach
+        # a real endpoint from a developer's .env: no address -> they use their mocks / rules.
+        monkeypatch.setattr(settings, "llm_base_url", "")
+        monkeypatch.setattr(settings, "llm_api_key", "")
+        monkeypatch.setattr(settings, "llm_vision_base_url", "")
+        monkeypatch.setattr(settings, "llm_vision_api_key", "")
         return fake
 
     return install
@@ -403,3 +409,50 @@ def test_copied_sources_note_is_not_kept(client, llm):
     kept = [m for m in store.history("sn1") if m["role"] == "assistant"][0]["content"]
     assert kept.count("(Sources used: ") == 1  # only the app's own note, not the model's copy
     assert "1, 4)" not in kept
+
+
+# ---------------------------------------------------------------------------
+# P3 integration: rewards, swag, saving a scanned flyer (P3's routes, mock fallback)
+# ---------------------------------------------------------------------------
+def test_rewards_tool_reads_p3_progress(client, llm):
+    llm(tool_step("get_rewards"), text_step("Go to 2 more career events [rules]."))
+    result = next(e for e in chat(client, "do I get anything for attending events?", session="rw1") if e["type"] == "tool_result")["result"]
+    p = result["programs"][0]
+    assert p["required"] > 0 and "attended" in p and p["rules"].startswith("https://")
+    assert all(e["when"].endswith("PT") for e in p["next_events_that_count"])
+
+
+@pytest.mark.parametrize("query", ["free swag", "any swag or merch", "giveaways this week"])
+def test_swag_means_freebies(query):
+    from app.chat.tools.events import specific_terms
+
+    assert specific_terms(query) is None
+
+
+def test_scanned_flyer_is_posted_through_p3(client, llm):
+    llm(tool_step("scan_flyer", image_url="photo://1"), text_step("Tap Confirm."))
+    events = chat(client, "add this event", session="fp1", image_url="data:image/png;base64,iVBORw0KGgo=")
+    card = next(e for e in events if e["type"] == "confirm")
+    body = client.post("/api/chat/confirm", json={"session_id": "fp1", "action_id": card["action_id"], "approved": True}).json()
+    assert body["status"] == "done" and body["message"].startswith("Added!") and "Events calendar" in body["message"]
+
+
+def test_flyer_without_a_date_is_not_posted(client, llm):
+    from app.chat.tools import events as ev_tools
+
+    async def no_date(args, ctx):
+        outcome = await original(args, ctx)
+        pending = store._pending[outcome.confirm["action_id"]]
+        pending.draft["starts_at"] = None
+        return outcome
+
+    original = ev_tools.scan_flyer
+    from app.chat.tools import runner
+    runner.HANDLERS["scan_flyer"] = no_date
+    try:
+        llm(tool_step("scan_flyer", image_url="photo://1"), text_step("Tap Confirm."))
+        card = next(e for e in chat(client, "add this", session="fp2", image_url="data:image/png;base64,iVBORw0KGgo=") if e["type"] == "confirm")
+        body = client.post("/api/chat/confirm", json={"session_id": "fp2", "action_id": card["action_id"], "approved": True}).json()
+        assert body["status"] == "failed" and "doesn't show when it is" in body["message"]
+    finally:
+        runner.HANDLERS["scan_flyer"] = original

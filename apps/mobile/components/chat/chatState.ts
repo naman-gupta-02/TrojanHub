@@ -73,6 +73,7 @@ export const TOOL_LABELS: Record<string, [running: string, done: string]> = {
   report_found_item: ["Drafting a found-item post…", "Drafted a found-item post"],
   search_events: ["Looking for events…", "Checked events"],
   search_deals: ["Looking for deals…", "Checked deals"],
+  get_rewards: ["Checking rewards programs…", "Checked rewards programs"],
   scan_flyer: ["Reading the flyer…", "Read the flyer"],
   save_event: ["Preparing to save the event…", "Ready to save the event"],
   log_complaint: ["Drafting your report…", "Drafted your report"],

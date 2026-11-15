@@ -22,7 +22,8 @@ _FEATURES = (
     ("/api/items", "lostfound"),
     ("/api/flyers", "events"), ("/api/events", "events"), ("/api/deals", "events"),
     ("/api/rewards", "events"), ("/api/feed", "events"),
-    ("/api/notify", "notify"),
+    ("/api/notify", "notify"), ("/api/me/notify", "notify"),
+    ("/api/me/events", "events"),
     ("/api/complaints", "complaints"), ("/api/tickets", "complaints"),
     ("/api/admin", "admin"),
 )
@@ -63,9 +64,15 @@ async def get_user_id(request: Request, authorization: str | None = Header(defau
 
 
 async def require_admin(user_id: str = Depends(get_user_id)) -> str:
-    """dept_admin / usg_admin only. Skipped while the admin feature is mocked."""
+    """dept_admin / usg_admin only. Skipped while the admin feature is mocked.
+
+    The signed-out fallback (DEMO_USER_ID) is never an admin for real admin features, even if
+    seed data gave the demo profile an admin role: otherwise any visitor could use admin-only
+    actions such as sending the digest email to any address."""
     if settings.mock("admin"):
         return user_id
+    if user_id == DEMO_USER_ID:
+        raise _unauthorized("Sign in with an admin account to do this.")
     from app.core.supabase import get_supabase
 
     res = get_supabase().table("profiles").select("role").eq("id", user_id).maybe_single().execute()

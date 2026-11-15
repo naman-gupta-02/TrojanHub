@@ -68,6 +68,13 @@ TOOLS: list[dict] = [
         ["query"],
     ),
     _fn(
+        "get_rewards",
+        "Attendance-reward programs: go to a set number of events (e.g. career events) to earn a perk, "
+        "swag or a stamp. Returns each program, the student's progress and upcoming events that count.",
+        {},
+        [],
+    ),
+    _fn(
         "scan_flyer",
         "Read a flyer photo into an event or deal draft. Needs user confirmation before saving.",
         {"image_url": {"type": "string"}},

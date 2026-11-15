@@ -18,6 +18,7 @@ HANDLERS: dict[str, Handler] = {
     "report_found_item": lostfound.report_found_item,
     "search_events": events.search_events,
     "search_deals": events.search_deals,
+    "get_rewards": events.get_rewards,
     "scan_flyer": events.scan_flyer,
     "save_event": events.save_event,
     "log_complaint": complaints.log_complaint,

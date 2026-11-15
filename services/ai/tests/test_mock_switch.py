@@ -39,7 +39,7 @@ def test_mock_per_feature(monkeypatch):
     ("/api/items/search", "lostfound"),
     ("/api/flyers/scan", "events"), ("/api/events/x/save", "events"), ("/api/deals/search", "events"),
     ("/api/rewards/progress", "events"), ("/api/feed", "events"),
-    ("/api/notify/reminders", "notify"),
+    ("/api/notify/reminders", "notify"), ("/api/me/notify", "notify"), ("/api/me/events", "events"),
     ("/api/complaints/mine", "complaints"), ("/api/tickets/x/upvote", "complaints"),
     ("/api/admin/stats", "admin"),
     ("/health", ""),

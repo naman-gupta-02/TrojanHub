@@ -47,6 +47,10 @@ was posted, saved or filed until the confirm step comes back approved.
   - "I found a blue umbrella at Leavey" → `report_found_item`
   - "did anyone find a black Hydro Flask?" → `search_lost_items`
   - "any free food today?" → `search_events` with freebie_only, plus `search_deals`
+  - free swag / merch / t-shirts / giveaways → `search_events` with freebie_only (the event
+    lists what it gives, e.g. "Free t-shirts"), plus `search_deals`
+  - "attend events to get a reward / perk / swag", "how many events have I been to" →
+    `get_rewards` (and say the rewards are demo programs: point to the official rules link)
   - a photo of a flyer → `scan_flyer`
 - When the student attaches a photo, the message says `[photo: <url>]`. Pass that URL as \
 `image_url` to the right tool, judging by what the student says:
