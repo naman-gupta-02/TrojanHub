@@ -5,6 +5,8 @@ Run from services/ai:  python -m pytest tests -q
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,8 +16,9 @@ from app.events.settings import p3
 from app.main import app
 
 EV = "e0000000-0000-0000-0000-000000000001"
+SOON = (datetime.now(timezone.utc) + timedelta(days=6)).isoformat()  # always in the future
 WRITES = [
-    ("POST", "/api/events", {"title": "Test event", "starts_at": "2026-11-20T02:00:00Z"}),
+    ("POST", "/api/events", {"title": "Test event", "starts_at": SOON}),
     ("POST", f"/api/events/{EV}/save", {}),
     ("DELETE", f"/api/events/{EV}/save", None),
     ("POST", f"/api/events/{EV}/checkin", {}),
@@ -59,14 +62,14 @@ def test_signed_in_can_write(live, monkeypatch):
         return "11111111-1111-1111-1111-111111111111"
 
     monkeypatch.setattr(auth, "_verify_with_supabase", fake_verify)
-    r = live.post("/api/events", json={"title": "Test event", "starts_at": "2026-11-20T02:00:00Z"},
+    r = live.post("/api/events", json={"title": "Test event", "starts_at": SOON},
                   headers={"Authorization": "Bearer good-token"})
     assert r.status_code == 201
 
 
 def test_offline_mock_development_still_works(monkeypatch):
     monkeypatch.setattr(settings, "supabase_url", "")
-    r = TestClient(app).post("/api/events", json={"title": "Test event", "starts_at": "2026-11-20T02:00:00Z"})
+    r = TestClient(app).post("/api/events", json={"title": "Test event", "starts_at": SOON})
     assert r.status_code == 201
 
 
@@ -79,6 +82,11 @@ def test_signed_out_cannot_post_found_item(live):
 
 def test_signed_out_cannot_claim_item(live):
     assert live.post("/api/items/c0000000-0000-0000-0000-000000000002/claim").status_code == 401
+
+
+def test_signed_out_cannot_edit_item(live):
+    r = live.patch("/api/items/c0000000-0000-0000-0000-000000000002", data={"description": "changed"})
+    assert r.status_code == 401
 
 
 def test_signed_in_can_post_found_item(live, monkeypatch):

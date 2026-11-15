@@ -20,6 +20,22 @@ def parse_ts(value: str | datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+# Events without an end time count as this long (lists, check-in, "has it ended?")
+DEFAULT_EVENT_LENGTH = timedelta(hours=2)
+
+
+def event_end(starts_at: str | datetime | None, ends_at: str | datetime | None) -> datetime | None:
+    start, end = parse_ts(starts_at), parse_ts(ends_at)
+    return end or (start + DEFAULT_EVENT_LENGTH if start else None)
+
+
+def has_ended(starts_at: str | datetime | None, ends_at: str | datetime | None, now: datetime | None = None) -> bool:
+    """True once the event is over. Past events stay in the database (attendance, rewards) but are
+    hidden from every list and can't be posted."""
+    end = event_end(starts_at, ends_at)
+    return bool(end and end <= (now or now_utc()))
+
+
 def iso(dt: datetime | None) -> str | None:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if dt else None
 

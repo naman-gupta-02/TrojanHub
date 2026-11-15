@@ -4,7 +4,7 @@ POST   /flyers/upload            multipart {photo}            -> {image_url}
 POST   /flyers/scan              {image_url}                  -> FlyerScanResponse (+ confidence, extra, duplicate)
 GET    /events/search            ?q=&from=&to=&category=&free=&freebie=
 GET    /events/{id}              -> {event, saved, registered, attended, counts_toward, google_calendar_url}
-POST   /events                   create (from a scanned flyer or the form); 409 if it's a duplicate
+POST   /events                   create (from a scanned flyer or the form); 409 if it's a duplicate, 422 if it ended
 POST   /events/{id}/save         {register?}
 DELETE /events/{id}/save
 GET    /events/{id}/ics
@@ -36,7 +36,7 @@ from app.core.auth import get_user_id, require_signed_in
 from app.core.mocks import load_mock
 from app.core.supabase import get_supabase
 from app.events import dedupe, feed as feed_builder, flyer, ics, rewards, store
-from app.events.dates import iso, now_utc, parse_ts
+from app.events.dates import has_ended, iso, now_utc, parse_ts
 from app.events.settings import db_live, llm_live, signing_secret
 
 router = APIRouter(tags=["events & deals (P3)"])
@@ -246,11 +246,14 @@ def get_event(event_id: str, user_id: str = Depends(get_user_id)) -> dict:
 
 @router.post("/events", status_code=201)
 def create_event(req: EventCreate, user_id: str = Depends(require_signed_in)) -> dict:
-    if not db_live():
-        return {"event": load_mock("events_search")["events"][0]}
     starts, ends = parse_ts(req.starts_at), parse_ts(req.ends_at)
     if ends and ends <= starts:
         raise HTTPException(422, detail={"code": "bad_dates", "message": "The end time must be after the start time"})
+    if has_ended(starts, ends):
+        raise HTTPException(422, detail={"code": "event_in_past",
+                                         "message": "This event already ended. Only upcoming events can be posted."})
+    if not db_live():
+        return {"event": load_mock("events_search")["events"][0]}
     if not req.force:
         dup = dedupe.find_duplicate(req.title, starts, req.location_text)
         if dup:
@@ -366,11 +369,14 @@ def search_deals(q: str | None = None, active: bool = True, user_id: str = Depen
 
 @router.post("/deals", status_code=201)
 def create_deal(req: DealCreate, user_id: str = Depends(require_signed_in)) -> dict:
-    if not db_live():
-        return {"deal": load_mock("deals_search")["deals"][0]}
     starts, expires = parse_ts(req.starts_at), parse_ts(req.expires_at)
     if starts and expires and expires <= starts:
         raise HTTPException(422, detail={"code": "bad_dates", "message": "The deal must expire after it starts"})
+    if expires and expires <= now_utc():
+        raise HTTPException(422, detail={"code": "deal_expired",
+                                         "message": "This deal already expired. Only current deals can be posted."})
+    if not db_live():
+        return {"deal": load_mock("deals_search")["deals"][0]}
     row = {
         "title": req.title.strip(),
         "description": req.description,

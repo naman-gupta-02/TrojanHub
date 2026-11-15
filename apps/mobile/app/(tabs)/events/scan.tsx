@@ -36,6 +36,20 @@ const EMPTY: Form = {
 };
 const STEPS = ['Uploading photo', 'Reading the flyer', 'Checking for duplicates'];
 const LOW = 0.7;
+const DEFAULT_EVENT_MS = 2 * 60 * 60 * 1000; // events without an end time count as 2 hours (same as the server)
+
+/** Same rule as the server: an event is over at its end time (or 2h after it starts); a deal at its expiry. */
+function alreadyEnded(kind: Kind, form: Form): boolean {
+  const ms = (v: string) => {
+    const iso = fromLocalInput(v);
+    const t = iso ? new Date(iso).getTime() : NaN;
+    return Number.isFinite(t) ? t : null;
+  };
+  const starts = ms(form.starts_at);
+  const ends = ms(form.ends_at);
+  const end = kind === 'deal' ? ends : ends ?? (starts === null ? null : starts + DEFAULT_EVENT_MS);
+  return end !== null && end <= Date.now();
+}
 
 export default function ScanScreen() {
   const [stage, setStage] = useState<Stage>('pick');
@@ -109,6 +123,7 @@ export default function ScanScreen() {
     const ends = fromLocalInput(form.ends_at);
     if (kind === 'event' && !starts) return setError('When does it start? Use YYYY-MM-DD HH:MM.');
     if (form.ends_at && !ends) return setError('End time should look like YYYY-MM-DD HH:MM.');
+    if (alreadyEnded(kind, form)) return; // the banner explains; the server refuses it too
     setSaving(true);
     try {
       if (kind === 'event') {
@@ -160,6 +175,13 @@ export default function ScanScreen() {
     low: !!scan && key in conf && (conf[key as keyof FlyerFields] ?? 1) < LOW,
     missing: !!scan && missing.has(key),
   });
+  const ended = alreadyEnded(kind, form);
+  const endedText =
+    kind === 'deal'
+      ? "This deal already expired, so it can't be posted."
+      : scan?.ended
+        ? "This flyer is for an event that already ended, so it can't be posted."
+        : "This event already ended, so it can't be posted.";
 
   return (
     <>
@@ -216,7 +238,14 @@ export default function ScanScreen() {
                 ]}
               />
 
-              {duplicate && (
+              {ended && (
+                <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.danger, backgroundColor: '#FDECEC', padding: spacing.md, gap: spacing.xs }} accessibilityRole="alert">
+                  <Text style={[s.cardTitle, { color: colors.danger }]}>⏰ {endedText}</Text>
+                  <Text style={{ color: colors.ink }}>Only upcoming events and current deals go on TrojanHub. If the date was read wrong, fix it below.</Text>
+                </View>
+              )}
+
+              {duplicate && !ended && (
                 <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.gold, backgroundColor: '#FFF8DB', padding: spacing.md, gap: spacing.sm }} accessibilityRole="alert">
                   <Text style={s.cardTitle}>👀 This might already be posted</Text>
                   <Text style={{ color: colors.ink }}>
@@ -299,7 +328,7 @@ export default function ScanScreen() {
                   {error}
                 </Text>
               )}
-              <Button title={kind === 'event' ? 'Post event' : 'Post deal'} onPress={() => submit()} busy={saving} />
+              <Button title={kind === 'event' ? 'Post event' : 'Post deal'} onPress={() => submit()} busy={saving} disabled={ended} />
               <Button title="Cancel" kind="secondary" onPress={() => router.back()} />
             </>
           )}
