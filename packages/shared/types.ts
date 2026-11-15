@@ -372,6 +372,8 @@ export interface EventDetailResponse {
   counts_toward: { program_id: UUID; name: string; attended: number; required: number; style?: RewardStyle }[];
   google_calendar_url: string;
   ics_url: string;
+  /** true for the person who posted it (or its org's owner / an admin): show "Edit event" */
+  can_edit?: boolean;
 }
 
 /** POST /events. 409 {error: {code: "duplicate", duplicate_of}} unless force: true */
@@ -397,6 +399,9 @@ export interface CreateEventRequest {
 export interface CreateEventResponse {
   event: Event;
 }
+
+/** PATCH /events/{id}: only the fields sent change. 403 unless can_edit; 422 bad_dates / event_in_past */
+export type UpdateEventRequest = Partial<Omit<CreateEventRequest, "flyer_url" | "force">>;
 
 export interface CreateDealRequest {
   title: string;

@@ -1,10 +1,11 @@
 // P3 Parnavi: flyer scanner. Camera/photo -> upload -> AI reads it -> editable form (confidence + missing) -> event or deal.
+// With ?edit=<event id> it's the same form, filled with a posted event, so its poster can fix mistakes.
 import { ApiRequestError } from '@trojanhub/shared/api';
-import type { EventCategory, FlyerFields, FlyerScanResponse } from '@trojanhub/shared/types';
+import type { Event, EventCategory, FlyerFields, FlyerScanResponse } from '@trojanhub/shared/types';
 import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import * as ImagePicker from 'expo-image-picker';
-import { Stack, router } from 'expo-router';
-import { useState } from 'react';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 
 import { Button, CATEGORIES, Segmented, errorMessage, fromLocalInput, s, toLocalInput } from '@/components/events/kit';
@@ -51,8 +52,29 @@ function alreadyEnded(kind: Kind, form: Form): boolean {
   return end !== null && end <= Date.now();
 }
 
+function formFromEvent(e: Event): Form {
+  return {
+    ...EMPTY,
+    title: e.title,
+    description: e.description ?? '',
+    starts_at: toLocalInput(e.starts_at),
+    ends_at: toLocalInput(e.ends_at),
+    location_text: e.location_text ?? '',
+    category: e.category,
+    is_free: e.is_free,
+    has_freebie: e.has_freebie,
+    freebie_desc: e.freebie_desc ?? '',
+    register_url: e.register_url ?? '',
+    ticket_url: e.ticket_url ?? '',
+    tickets_open_at: toLocalInput(e.tickets_open_at),
+    org_name: e.org_name ?? '',
+  };
+}
+
 export default function ScanScreen() {
-  const [stage, setStage] = useState<Stage>('pick');
+  const { edit: editId } = useLocalSearchParams<{ edit?: string }>();
+  const [original, setOriginal] = useState<Form | null>(null); // the event as posted, in edit mode
+  const [stage, setStage] = useState<Stage>(editId ? 'reading' : 'pick');
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState<string | null>(null);
   const [flyerUrl, setFlyerUrl] = useState<string | null>(null);
@@ -65,6 +87,32 @@ export default function ScanScreen() {
   const [saving, setSaving] = useState(false);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
+
+  useEffect(() => {
+    if (!editId) return;
+    let cancelled = false;
+    api.events
+      .get(editId)
+      .then(({ event, can_edit }) => {
+        if (cancelled) return;
+        if (!can_edit) {
+          setError('Only the person who posted this event can edit it.');
+          return;
+        }
+        const f = formFromEvent(event);
+        setForm(f);
+        setOriginal(f);
+        setPreview(event.flyer_url);
+        setStage('form');
+      })
+      .catch((e: unknown) => !cancelled && setError(errorMessage(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [editId]);
+
+  // the server refuses past dates, so an already-over event can still get its typo fixed if the time stays the same
+  const datesChanged = !original || form.starts_at !== original.starts_at || form.ends_at !== original.ends_at;
 
   async function pick(fromCamera: boolean) {
     setError(null);
@@ -125,10 +173,26 @@ export default function ScanScreen() {
     const ends = fromLocalInput(form.ends_at.trim());
     if (kind === 'event' && !starts) return setError('When does it start? Use YYYY-MM-DD HH:MM.');
     if (form.ends_at.trim() && !ends) return setError('End time should look like YYYY-MM-DD HH:MM.');
-    if (alreadyEnded(kind, form)) return; // the banner explains; the server refuses it too
+    if (datesChanged && alreadyEnded(kind, form)) return; // the banner explains; the server refuses it too
     setSaving(true);
     try {
-      if (kind === 'event') {
+      if (editId) {
+        await api.events.update(editId, {
+          title: form.title.trim(),
+          description: form.description || null,
+          ...(datesChanged ? { starts_at: starts!, ends_at: ends } : {}),
+          location_text: form.location_text || null,
+          category: form.category,
+          is_free: form.is_free,
+          has_freebie: form.has_freebie,
+          freebie_desc: form.has_freebie ? form.freebie_desc || null : null,
+          register_url: form.register_url || null,
+          ticket_url: form.ticket_url || null,
+          tickets_open_at: fromLocalInput(form.tickets_open_at.trim()),
+          org_name: form.org_name || null,
+        });
+        router.back(); // the event page reloads when it comes back into view
+      } else if (kind === 'event') {
         const { event } = await api.events.create({
           title: form.title.trim(),
           description: form.description || null,
@@ -178,7 +242,7 @@ export default function ScanScreen() {
     low: !!scan && key in conf && (conf[key as keyof FlyerFields] ?? 1) < LOW,
     missing: !!scan && missing.has(key),
   });
-  const ended = alreadyEnded(kind, form);
+  const ended = datesChanged && alreadyEnded(kind, form);
   const endedText =
     kind === 'deal'
       ? "This deal already expired, so it can't be posted."
@@ -188,7 +252,7 @@ export default function ScanScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, title: 'Scan a flyer', presentation: 'modal' }} />
+      <Stack.Screen options={{ headerShown: true, title: editId ? 'Edit event' : 'Scan a flyer', presentation: 'modal' }} />
       <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
           {stage === 'pick' && (
@@ -217,7 +281,22 @@ export default function ScanScreen() {
             </>
           )}
 
-          {stage === 'reading' && (
+          {editId && stage === 'reading' && (
+            <View style={{ gap: spacing.md }}>
+              {error ? (
+                <>
+                  <View style={s.errorBox} accessibilityRole="alert">
+                    <Text style={{ color: colors.danger, fontWeight: '700' }}>{error}</Text>
+                  </View>
+                  <Button title="Back" kind="secondary" onPress={() => router.back()} />
+                </>
+              ) : (
+                <Text style={s.cardMeta}>Loading your event…</Text>
+              )}
+            </View>
+          )}
+
+          {!editId && stage === 'reading' && (
             <View style={{ gap: spacing.lg, alignItems: 'center' }}>
               {preview && <Image source={{ uri: preview }} style={{ width: '100%', height: 320, borderRadius: radius.lg }} resizeMode="contain" accessibilityLabel="Your flyer" />}
               <Text style={s.h1}>Reading your flyer…</Text>
@@ -243,14 +322,18 @@ export default function ScanScreen() {
                   </Text>
                 </View>
               )}
-              <Segmented
-                value={kind}
-                onChange={setKind}
-                options={[
-                  { value: 'event', label: '📅 Event' },
-                  { value: 'deal', label: '🎁 Deal' },
-                ]}
-              />
+              {editId ? (
+                <Text style={s.cardMeta}>Fix anything that's wrong, then save. People who saved it see the update.</Text>
+              ) : (
+                <Segmented
+                  value={kind}
+                  onChange={setKind}
+                  options={[
+                    { value: 'event', label: '📅 Event' },
+                    { value: 'deal', label: '🎁 Deal' },
+                  ]}
+                />
+              )}
 
               {ended && (
                 <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.danger, backgroundColor: '#FDECEC', padding: spacing.md, gap: spacing.xs }} accessibilityRole="alert">
@@ -259,7 +342,7 @@ export default function ScanScreen() {
                 </View>
               )}
 
-              {duplicate && !ended && (
+              {duplicate && !ended && !editId && (
                 <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.gold, backgroundColor: '#FFF8DB', padding: spacing.md, gap: spacing.sm }} accessibilityRole="alert">
                   <Text style={s.cardTitle}>👀 This might already be posted</Text>
                   <Text style={{ color: colors.ink }}>
@@ -346,7 +429,7 @@ export default function ScanScreen() {
                   {error}
                 </Text>
               )}
-              <Button title={kind === 'event' ? 'Post event' : 'Post deal'} onPress={() => submit()} busy={saving} disabled={ended} />
+              <Button title={editId ? 'Save changes' : kind === 'event' ? 'Post event' : 'Post deal'} onPress={() => submit()} busy={saving} disabled={ended} />
               <Button title="Cancel" kind="secondary" onPress={() => router.back()} />
             </>
           )}
