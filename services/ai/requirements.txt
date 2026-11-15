@@ -4,6 +4,7 @@ uvicorn[standard]>=0.30
 pydantic-settings>=2.4
 python-multipart>=0.0.9
 httpx>=0.27
+tzdata>=2024.1         # America/Los_Angeles on Windows (zoneinfo has no system tz database there)
 
 # Supabase + LLM (OpenAI-compatible client, any provider via LLM_BASE_URL)
 supabase>=2.7
@@ -17,3 +18,6 @@ pyyaml>=6.0
 # Embeddings: text (P1/P4) and CLIP (P2). Heavy, so install once on Replit and load at startup.
 sentence-transformers>=3.0
 open_clip_torch>=2.26
+
+# Tests
+pytest>=8

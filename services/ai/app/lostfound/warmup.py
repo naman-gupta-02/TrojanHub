@@ -1,7 +1,8 @@
 """Load Lost & Found's AI models in the background when the service starts (P2).
 
 Without this the first post or search after a restart waits ~10-20 s for CLIP and the sentence
-model to load. Only runs when Lost & Found is real (USE_MOCKS=false), so mock mode stays light.
+model to load. Only runs when Lost & Found is real (USE_MOCKS=false, or "lostfound" in
+REAL_FEATURES), so mock mode stays light.
 """
 
 from __future__ import annotations
@@ -27,5 +28,5 @@ def _load() -> None:
 
 
 def start() -> None:
-    if not settings.use_mocks:
+    if not settings.mock("lostfound"):
         threading.Thread(target=_load, name="lostfound-warmup", daemon=True).start()

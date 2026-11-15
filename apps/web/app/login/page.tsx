@@ -16,7 +16,11 @@ export default function LoginPage() {
   const [signedInAs, setSignedInAs] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase?.auth.getSession().then(({ data }) => setSignedInAs(data.session?.user.email ?? null));
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => setSignedInAs(data.session?.user.email ?? null));
+    // A sign-in link that lands on this page finishes in the background: update when it does.
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => setSignedInAs(session?.user.email ?? null));
+    return () => data.subscription.unsubscribe();
   }, []);
 
   if (!supabase) {
@@ -39,11 +43,15 @@ export default function LoginPage() {
     if (step === "email") {
       if (!clean.endsWith("@usc.edu")) return setMessage("TrojanHub is for Trojans: use your @usc.edu email.");
       setBusy(true);
-      const { error } = await client.auth.signInWithOtp({ email: clean, options: { shouldCreateUser: true } });
+      const { error } = await client.auth.signInWithOtp({
+        email: clean,
+        // If the student clicks the email's link instead of typing the code, come back here.
+        options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/login` },
+      });
       setBusy(false);
       if (error) return setMessage(error.message);
       setStep("code");
-      setMessage(`We emailed a 6-digit code to ${clean}.`);
+      setMessage(`We emailed ${clean}. Type the 6-digit code from that email here.`);
     } else {
       setBusy(true);
       const { error } = await client.auth.verifyOtp({ email: clean, token: code.trim(), type: "email" });

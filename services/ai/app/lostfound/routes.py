@@ -5,8 +5,9 @@ GET  /items/search             ?q=&building_id=
 POST /items/search-by-image    multipart {photo}
 POST /items/{id}/claim
 
-USE_MOCKS=true serves packages/shared/mocks/items_*.json. Otherwise the real logic runs:
-items.py (post), search.py (search), claim.py (claim). Response shapes follow types.ts.
+While settings.mock("lostfound") is true (USE_MOCKS=true and "lostfound" not in REAL_FEATURES),
+these serve packages/shared/mocks/items_*.json. Otherwise the real logic runs: items.py (post),
+search.py (search), claim.py (claim). Response shapes follow types.ts.
 """
 
 import re
@@ -36,7 +37,7 @@ async def create_item(
     location_text: str | None = Form(None),
     user_id: str = Depends(get_user_id),
 ) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         valuable = bool(description and _VALUABLE_WORDS.search(description.lower()))
         return load_mock("items_create_valuable" if valuable else "items_create")
 
@@ -58,7 +59,7 @@ async def create_item(
 
 @router.get("/items/search")
 async def search_items(q: str, building_id: str | None = None, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         return load_mock("items_search")
     try:
         return await run_in_threadpool(search.search_text, q, building_id)
@@ -68,7 +69,7 @@ async def search_items(q: str, building_id: str | None = None, user_id: str = De
 
 @router.post("/items/search-by-image")
 async def search_items_by_image(photo: UploadFile = File(...), user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         return load_mock("items_search")
     photo_bytes = await photo.read()
     try:
@@ -79,7 +80,7 @@ async def search_items_by_image(photo: UploadFile = File(...), user_id: str = De
 
 @router.post("/items/{item_id}/claim")
 async def claim_item(item_id: str, user_id: str = Depends(get_user_id)) -> dict:
-    if settings.use_mocks:
+    if settings.mock("lostfound"):
         return load_mock("items_claim_valuable" if item_id == _VALUABLE_ITEM_ID else "items_claim")
     try:
         return await run_in_threadpool(claim.claim_item, item_id, user_id)
