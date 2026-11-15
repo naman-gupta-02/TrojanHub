@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 LA = ZoneInfo("America/Los_Angeles")
+GUEST_USER_ID = "guest"  # someone chatting without signing in (chat/routes.py chat_user)
 
 
 @dataclass

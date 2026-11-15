@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 from app.chat import store
-from app.chat.tools.base import ToolContext, ToolOutcome
+from app.chat.tools.base import GUEST_USER_ID, ToolContext, ToolOutcome
 from app.chat.tools.http import call, download
+from app.core.config import settings
 
 
 async def search_lost_items(args: dict, ctx: ToolContext) -> ToolOutcome:
     q = " ".join(filter(None, [args["query"], args.get("building")]))
-    res = await call("GET", "/items/search", ctx.auth_header, params={"q": q})
+    guest = ctx.user_id == GUEST_USER_ID
+    if guest and not settings.mock("lostfound"):
+        res = await _guest_search(q)
+    else:
+        res = await call("GET", "/items/search", ctx.auth_header, params={"q": q})
     if "error" in res:
         return ToolOutcome(res)
     results = [
@@ -20,7 +27,22 @@ async def search_lost_items(args: dict, ctx: ToolContext) -> ToolOutcome:
         }
         for r in res.get("results", [])[:5]
     ]
-    return ToolOutcome({"results": results, "note": "Valuables are picked up at DPS / IT, not handed off in chat."})
+    note = "Valuables are picked up at DPS / IT, not handed off in chat."
+    if guest:
+        note += " The student is a guest: they need to sign in with their @usc.edu email to open an item or claim it."
+    return ToolOutcome({"results": results, "note": note})
+
+
+async def _guest_search(q: str) -> dict:
+    """GET /items/search is for signed-in students, so for a guest Tommy runs the same search
+    in-process. Only titles, tiers and where each item was found reach the guest (see above);
+    photos, details and claiming stay behind sign-in on the item page."""
+    from app.lostfound import items, search
+
+    try:
+        return await run_in_threadpool(search.search_text, q)
+    except items.ItemError as e:
+        return {"error": {"code": e.code, "message": e.message}, "status": e.status}
 
 
 async def report_found_item(args: dict, ctx: ToolContext) -> ToolOutcome:

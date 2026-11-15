@@ -3,6 +3,11 @@
 POST /chat           {session_id, message, image_url?} -> SSE stream
 POST /chat/confirm   {session_id, action_id, approved, edits?}
 
+Guests: a visitor who isn't signed in can still chat (CHAT_GUESTS=0 turns this off). They get
+the read-only tools (USC answers, events, deals, lost-item search); anything that saves or posts
+asks them to sign in first (tools/runner.py). Guests are limited to GUEST_LIMIT messages an hour
+per IP, so a public demo can't run up the LLM bill.
+
 Real agent when LLM_MODEL is set (its tools call the other endpoints, which may still be
 mocks). With no LLM configured, /chat streams packages/shared/mocks/chat_stream.json so the chat
 UI can be built anyway.
@@ -13,15 +18,17 @@ import json
 import os
 import re
 import threading
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.chat import store
 from app.chat.agent import run_turn
+from app.chat.tools.base import GUEST_USER_ID
 from app.chat.tools.runner import run_confirmed
 from app.core.auth import get_user_id
 from app.core.config import settings
@@ -42,6 +49,41 @@ def _warm_up() -> None:
 
 if settings.llm_model and os.getenv("CHAT_WARMUP", "1") != "0":
     threading.Thread(target=_warm_up, daemon=True, name="tommy-warmup").start()
+
+CHAT_GUESTS = os.getenv("CHAT_GUESTS", "1") != "0"
+GUEST_LIMIT = int(os.getenv("CHAT_GUEST_LIMIT", "30"))  # messages per hour per IP
+_guest_hits: dict[str, list[float]] = {}
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")  # Replit sits behind a proxy
+    return forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+
+
+def _guest_allowed(ip: str) -> bool:
+    now = time.time()
+    hits = [t for t in _guest_hits.get(ip, []) if now - t < 3600]
+    if len(hits) >= GUEST_LIMIT:
+        _guest_hits[ip] = hits
+        return False
+    _guest_hits[ip] = [*hits, now]
+    return True
+
+
+async def chat_user(request: Request, authorization: str | None = Header(default=None)) -> str:
+    """The signed-in student, or a guest when nobody is signed in (instead of a 401)."""
+    if override := request.app.dependency_overrides.get(get_user_id):  # tests that "log in"
+        return override()
+    try:
+        return await get_user_id(request, authorization)
+    except HTTPException as e:
+        if e.status_code != 401 or authorization or not CHAT_GUESTS:
+            raise  # a bad or expired token still means "sign in again"
+    if not _guest_allowed(_client_ip(request)):
+        raise HTTPException(429, detail={"code": "rate_limited",
+                                         "message": "Guests can send a few messages an hour. Sign in to keep chatting."})
+    return GUEST_USER_ID
+
 
 MOCK_TOKEN_DELAY = 0.05  # seconds between events, so the UI can show streaming
 
@@ -94,7 +136,7 @@ def _agent_enabled() -> bool:
 
 @router.post("/chat")
 async def chat(
-    req: ChatRequest, user_id: str = Depends(get_user_id), authorization: str | None = Header(default=None)
+    req: ChatRequest, user_id: str = Depends(chat_user), authorization: str | None = Header(default=None)
 ) -> StreamingResponse:
     stream = _agent_stream(req, user_id, authorization) if _agent_enabled() else _mock_stream(req)
     return StreamingResponse(stream, media_type="text/event-stream",

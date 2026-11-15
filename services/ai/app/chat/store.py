@@ -119,6 +119,7 @@ def cache_clear() -> None:
 # Supabase record of finished turns (best effort; never breaks the chat)
 # ---------------------------------------------------------------------------
 def persist_turn(session_id: str, user_id: str | None, user_text: str, answer: str, sources: list[dict]) -> None:
+    from app.chat.tools.base import GUEST_USER_ID
     from app.core.auth import DEMO_USER_ID
     from app.core.config import settings
 
@@ -127,7 +128,7 @@ def persist_turn(session_id: str, user_id: str | None, user_text: str, answer: s
     try:
         from app.core.supabase import get_supabase
 
-        uid = None if user_id in (None, DEMO_USER_ID, "eval") else user_id  # FK to profiles
+        uid = None if user_id in (None, DEMO_USER_ID, GUEST_USER_ID, "eval") else user_id  # FK to profiles
         slim = [{"n": s["n"], "title": s["title"], "url": s["url"]} for s in sources]
         get_supabase().table("chat_messages").insert([
             {"session_id": session_id, "user_id": uid, "role": "user", "content": user_text},

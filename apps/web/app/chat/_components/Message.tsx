@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { TommyAvatar } from "@/components/tommy/TommyAvatar";
 
-import { isInternalLink, moodFor, parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from "../_lib/chatState";
+import { isInternalLink, moodFor, needsSignIn, parseAnswer, toolLabel, type ChatMsg } from "../_lib/chatState";
 import { ConfirmCardView } from "./ConfirmCard";
 
 type Props = {
@@ -91,7 +91,7 @@ export function Message({ msg, onConfirm }: Props) {
         {msg.error && (
           <p className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
             {msg.error}
-            {msg.error === SIGN_IN_TO_CHAT && (
+            {needsSignIn(msg.error) && (
               <>
                 {" "}
                 <Link href="/login" className="font-semibold underline">
