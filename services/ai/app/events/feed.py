@@ -6,7 +6,7 @@ one-line `reason` shown on the card, so students see *why* it was picked.
 
 from datetime import timedelta
 
-from app.events import store
+from app.events import perks, store
 from app.events.dates import LA, friendly, friendly_time, la_day_bounds, la_today, now_utc, parse_ts
 
 FOR_YOU = 3
@@ -29,7 +29,7 @@ def _day_label(start) -> str:
 
 
 def score_event(e: dict, interests: set[str], saved: dict[str, bool],
-                program_progress: dict[str, tuple[str, int, int]]) -> tuple[float, str]:
+                program_progress: dict[str, tuple[str, int, int, str]]) -> tuple[float, str]:
     """(points, reason) for one event."""
     now = now_utc()
     start = parse_ts(e["starts_at"])
@@ -39,8 +39,11 @@ def score_event(e: dict, interests: set[str], saved: dict[str, bool],
     if e["id"] in saved and hours <= 3:
         signals.append((6, f"You saved this · starts {_day_label(start)}"))
     if e["id"] in program_progress:
-        name, done, need = program_progress[e["id"]]
-        signals.append((4, f"Counts toward {name} ({done}/{need})"))
+        name, done, need, style = program_progress[e["id"]]
+        if style == "entries":
+            signals.append((4, f"One more entry in the {name} ({done} so far)"))
+        else:
+            signals.append((4, f"Counts toward {name} ({done}/{need})"))
     if e["category"] in interests:
         signals.append((3, f"Matches your interest: {CATEGORY_LABEL.get(e['category'], e['category'])}"))
     if e["has_freebie"]:
@@ -111,12 +114,12 @@ def build(user_id: str) -> dict:
     attended = store.attended_ids(user_id) if profile else set()
 
     # events that count toward a reward program the student has started
-    program_progress: dict[str, tuple[str, int, int]] = {}
+    program_progress: dict[str, tuple[str, int, int, str]] = {}
     for program, ids in store.reward_programs():
         done = len(ids & attended)
         if done:
             for event_id in ids - attended:
-                program_progress[event_id] = (program["name"], done, program["required_count"])
+                program_progress[event_id] = (program["name"], done, program["required_count"], perks.style(program["id"]))
 
     scored = [(*score_event(e, interests, saved, program_progress), "event", e) for e in events]
     scored += [(*score_deal(d, interests), "deal", d) for d in deals]

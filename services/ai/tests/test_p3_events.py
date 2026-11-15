@@ -227,3 +227,72 @@ def test_create_event_rejects_end_before_start(client, monkeypatch):
 def test_upload_refuses_svg(client):
     r = client.post("/api/flyers/upload", files={"photo": ("x.svg", b"<svg onload=alert(1)>", "image/svg+xml")})
     assert r.status_code == 415
+
+
+# ---------------------------------------------------------------------------
+# Rewards: my progress, what counted, when I earned it, and ways to earn
+# ---------------------------------------------------------------------------
+def _program(pid, required):
+    return {"id": pid, "name": "P", "office": "O", "reward_desc": None, "required_count": required, "rules_url": None}
+
+
+def _event(n, days):
+    return {"id": f"e{n}", "title": f"Event {n}", "starts_at": iso(now_utc() + timedelta(days=days)), "status": "published"}
+
+
+def test_progress_shows_what_counted_and_when_it_was_earned(monkeypatch):
+    from app.events import perks, rewards
+
+    events = [_event(1, -9), _event(2, -5), _event(3, -1), _event(4, 2), _event(5, 3)]
+    monkeypatch.setattr(store, "events_by_ids", lambda ids: [e for e in events if e["id"] in ids])
+    goal = (_program(perks.CPF_PROGRAM, 2), {"e1", "e2", "e3", "e4"})
+    checkins = {"e2": "2026-11-09T19:00:00Z", "e1": "2026-11-05T19:00:00Z", "e3": "2026-11-13T19:00:00Z"}
+
+    [p] = rewards.progress("u", programs=[goal], attended=checkins)
+    assert p["style"] == "goal" and p["attended"] == 3 and p["required"] == 2
+    assert [c["id"] for c in p["attended_events"]] == ["e1", "e2", "e3"]  # oldest first
+    assert p["completed_at"] == "2026-11-09T19:00:00Z"  # the 2nd check-in reached the goal
+    assert [e["id"] for e in p["next_eligible_events"]] == ["e4"]
+
+    [p] = rewards.progress("u", programs=[goal], attended={"e1": "2026-11-05T19:00:00Z"})
+    assert p["completed_at"] is None
+
+
+def test_drawing_programs_count_entries(monkeypatch):
+    from app.events import perks, rewards
+
+    monkeypatch.setattr(store, "events_by_ids", lambda ids: [_event(1, -2), _event(2, 1)])
+    drawing = (_program(perks.CAREER_FEST_PROGRAM, 1), {"e1", "e2"})
+    [p] = rewards.progress("u", programs=[drawing], attended={"e1"})
+    assert p["style"] == "entries" and p["attended"] == 1
+
+
+def test_perks_are_well_formed():
+    from app.events import perks
+
+    data = perks.perks()
+    ids = [p["id"] for p in data["perks"]]
+    assert len(ids) == len(set(ids)) and len(ids) >= 10
+    tracked = {p["tracked_program_id"] for p in data["perks"]} - {None}
+    assert tracked == {perks.CAREER_FEST_PROGRAM, perks.CPF_PROGRAM}
+    for p in data["perks"]:
+        assert p["way"] in {"attend", "task", "apply", "compete"}
+        assert isinstance(p["redeemable"], bool)
+        assert p["url"].startswith(("https://", "/")), p["id"]
+        assert all(p[k] for k in ("name", "office", "reward", "how_to_earn", "who", "when"))
+    assert any(not p["redeemable"] for p in data["perks"])  # recognition-only perks exist too
+
+
+def test_perks_route_is_public():
+    app.dependency_overrides.clear()
+    r = TestClient(app).get("/api/rewards/perks")
+    assert r.status_code == 200 and r.json()["perks"] and r.json()["checked_on"]
+
+
+def test_my_checkins_newest_first(client, monkeypatch):
+    events = [_event(1, -5), _event(2, -1)]
+    monkeypatch.setattr(store, "attendance", lambda uid: {"e1": "2026-11-09T19:00:00Z", "e2": "2026-11-13T19:00:00Z"})
+    monkeypatch.setattr(store, "events_by_ids", lambda ids: [e for e in events if e["id"] in ids])
+    r = client.get("/api/rewards/checkins")
+    assert r.status_code == 200
+    assert [c["event"]["id"] for c in r.json()["checkins"]] == ["e2", "e1"]

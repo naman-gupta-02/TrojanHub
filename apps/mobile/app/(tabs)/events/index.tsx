@@ -1,12 +1,14 @@
 // P3 Parnavi: Events (calendar + filters), Deals, Rewards in one tab.
-import type { Event, EventCategory, RewardProgress } from '@trojanhub/shared/types';
+import type { Event, EventCategory, Perk, PerkWay, RewardProgress } from '@trojanhub/shared/types';
 import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
-import { Link, useLocalSearchParams } from 'expo-router';
+import * as Linking from 'expo-linking';
+import { Link, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 
 import {
   CATEGORIES,
+  Chip,
   DealCard,
   Empty,
   ErrorBox,
@@ -22,6 +24,7 @@ import {
   useDebounced,
 } from '@/components/events/kit';
 import { api } from '@/lib/api';
+import { getAccessToken } from '@/lib/supabase';
 
 type Tab = 'events' | 'deals' | 'rewards';
 
@@ -175,55 +178,230 @@ function DealsTab() {
 }
 
 // ---------------------------------------------------------------------------
+const shortDate = (iso: string) =>
+  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' }).format(new Date(iso));
+
 function RewardsTab() {
+  const signedIn = useApi(() => getAccessToken().then(Boolean));
   const rewards = useApi(() => api.rewards.progress());
+  const checkins = useApi(() => api.rewards.checkins());
+  const refresh = () => {
+    rewards.reload();
+    checkins.reload();
+  };
+  const programs = rewards.data ?? [];
+  const earned = programs.filter((p) => (p.style ?? 'goal') === 'goal' && p.attended >= p.required).length;
+  const entries = programs.filter((p) => p.style === 'entries').reduce((n, p) => n + p.attended, 0);
+  const recent = checkins.data?.checkins ?? [];
+
   return (
-    <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={false} onRefresh={rewards.reload} tintColor={colors.cardinal} />}>
-      <Text style={s.sub}>Some offices give perks for showing up. Check in at events and watch your progress fill up.</Text>
+    <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={colors.cardinal} />}>
+      {signedIn.data === false && (
+        <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.gold, backgroundColor: '#FFF8DB', padding: spacing.md, gap: spacing.sm }} accessibilityRole="alert">
+          <Text style={{ color: colors.ink }}>
+            <Text style={{ fontWeight: '700' }}>You&apos;re seeing a demo student&apos;s rewards. </Text>
+            Sign in with your @usc.edu email to track your own check-ins.
+          </Text>
+          <Link href="/auth/login" asChild>
+            <Pressable style={[s.button, { backgroundColor: colors.cardinal, borderColor: colors.cardinal, alignSelf: 'flex-start' }]} accessibilityRole="button">
+              <Text style={[s.buttonText, { color: '#fff' }]}>Sign in</Text>
+            </Pressable>
+          </Link>
+        </View>
+      )}
+
+      <Text style={s.section} accessibilityRole="header">
+        🏆 My rewards
+      </Text>
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <Stat label="Check-ins" value={checkins.data ? recent.length : '–'} />
+        <Stat label="Earned" value={rewards.data ? earned : '–'} />
+        <Stat label="Entries" value={rewards.data ? entries : '–'} />
+      </View>
       {rewards.loading && !rewards.data && <Loading />}
       {rewards.error && <ErrorBox message={rewards.error} onRetry={rewards.reload} />}
       {rewards.data?.length === 0 && <Empty emoji="🏆" title="No reward programs yet" />}
-      {rewards.data?.map((p) => <Program key={p.program.id} p={p} />)}
-      <Text style={{ fontSize: fontSize.xs, color: colors.muted }}>Progress is tracked by TrojanHub check-ins. Each office's official page has the real rules and how to claim.</Text>
+      {programs.map((p) => (
+        <Program key={p.program.id} p={p} />
+      ))}
+
+      {recent.length > 0 && (
+        <View style={[s.card, { flexDirection: 'column', gap: spacing.xs }]}>
+          <Text style={s.cardTitle}>📍 My recent check-ins</Text>
+          {recent.slice(0, 6).map(({ event, checked_in_at }) => (
+            <Link key={event.id} href={{ pathname: '/events/[id]', params: { id: event.id } }} asChild>
+              <Pressable style={{ flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm, minHeight: 36, alignItems: 'center' }} accessibilityRole="link">
+                <Text style={{ color: colors.ink, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                  {event.title}
+                </Text>
+                <Text style={s.cardMeta}>{shortDate(checked_in_at ?? event.starts_at)}</Text>
+              </Pressable>
+            </Link>
+          ))}
+        </View>
+      )}
+      <Text style={{ fontSize: fontSize.xs, color: colors.muted }}>
+        TrojanHub keeps your own count from event check-ins. Each office&apos;s official check-in or form is what earns the reward.
+      </Text>
+
+      <Perks />
     </ScrollView>
   );
 }
 
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <View style={[s.card, { flex: 1, flexDirection: 'column', alignItems: 'center', gap: 2, paddingVertical: spacing.md }]}>
+      <Text style={{ fontSize: fontSize.xxl, fontWeight: '800', color: colors.cardinal }}>{value}</Text>
+      <Text style={{ fontSize: fontSize.xs, fontWeight: '600', color: colors.muted }}>{label}</Text>
+    </View>
+  );
+}
+
 function Program({ p }: { p: RewardProgress }) {
-  const done = p.attended >= p.required;
+  const entries = p.style === 'entries';
+  const done = !entries && p.attended >= p.required;
   const left = Math.max(p.required - p.attended, 0);
+  const counted = p.attended_events ?? [];
+  const rules = p.program.rules_url;
   return (
     <View style={{ borderRadius: radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}>
       <View style={{ padding: spacing.lg, gap: spacing.xs, backgroundColor: done ? colors.gold : colors.cardinal }}>
-        <Text style={{ fontSize: fontSize.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: done ? colors.ink : colors.gold }}>{p.program.office}</Text>
+        <Text style={{ fontSize: fontSize.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: done ? colors.ink : colors.gold }}>
+          {p.program.office}
+          {entries ? ' · Prize drawing' : ''}
+        </Text>
         <Text style={{ fontSize: fontSize.xl, fontWeight: '800', color: done ? colors.ink : '#fff' }} accessibilityRole="header">
           {p.program.name}
         </Text>
         {p.program.reward_desc && <Text style={{ color: done ? colors.ink : 'rgba(255,255,255,0.85)', fontSize: fontSize.sm }}>{p.program.reward_desc}</Text>}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm }} accessibilityRole="progressbar" accessibilityValue={{ now: p.attended, max: p.required, min: 0 }}>
-          {Array.from({ length: p.required }, (_, i) => (
-            <View
-              key={i}
-              style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: i < p.attended ? (done ? colors.ink : colors.gold) : 'transparent', borderWidth: 2, borderColor: i < p.attended ? 'transparent' : done ? colors.ink : 'rgba(255,255,255,0.5)' }}>
-              {i < p.attended && <Text style={{ color: done ? colors.gold : colors.ink, fontWeight: '800' }}>✓</Text>}
-            </View>
-          ))}
-          <Text style={{ color: done ? colors.ink : '#fff', fontWeight: '700', marginLeft: spacing.xs }}>{done ? '🎉 Complete!' : `${p.attended} of ${p.required} · ${left} to go`}</Text>
-        </View>
-      </View>
-      <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-        {done ? (
-          <Text style={s.sub}>You did it! Head to {p.program.office} to claim your reward.</Text>
+        {entries ? (
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: fontSize.lg, marginTop: spacing.sm }}>
+            🎟️ {p.attended} entr{p.attended === 1 ? 'y' : 'ies'} · each check-in adds one
+          </Text>
         ) : (
-          <>
-            <Text style={s.cardTitle}>Events that count</Text>
-            {p.next_eligible_events.length === 0 && <Text style={s.sub}>Nothing scheduled yet. Check back soon.</Text>}
-            {p.next_eligible_events.map((e, i) => (
-              <EventCard key={e.id} event={e} reason={i === 0 && left === 1 ? 'This one completes it!' : undefined} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' }} accessibilityRole="progressbar" accessibilityValue={{ now: p.attended, max: p.required, min: 0 }}>
+            {Array.from({ length: p.required }, (_, i) => (
+              <View
+                key={i}
+                style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: i < p.attended ? (done ? colors.ink : colors.gold) : 'transparent', borderWidth: 2, borderColor: i < p.attended ? 'transparent' : done ? colors.ink : 'rgba(255,255,255,0.5)' }}>
+                {i < p.attended && <Text style={{ color: done ? colors.gold : colors.ink, fontWeight: '800' }}>✓</Text>}
+              </View>
             ))}
-          </>
+            <Text style={{ color: done ? colors.ink : '#fff', fontWeight: '700', marginLeft: spacing.xs }}>
+              {done ? `🎉 Earned${p.completed_at ? ` ${shortDate(p.completed_at)}` : ''}` : `${p.attended} of ${p.required} · ${left} to go`}
+            </Text>
+          </View>
         )}
       </View>
+      <View style={{ padding: spacing.lg, gap: spacing.sm }}>
+        <Text style={s.cardTitle}>What counted</Text>
+        {counted.length === 0 && <Text style={s.cardMeta}>Nothing yet. Check in at one of the events below.</Text>}
+        {counted.map((c) => (
+          <View key={c.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm }}>
+            <Text style={{ color: colors.ink, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+              ✓ {c.title}
+            </Text>
+            <Text style={s.cardMeta}>{shortDate(c.checked_in_at ?? c.starts_at)}</Text>
+          </View>
+        ))}
+        {done && rules && (
+          <Text onPress={() => Linking.openURL(rules)} accessibilityRole="link" style={{ color: colors.cardinal, fontWeight: '700', paddingVertical: spacing.xs }}>
+            How to claim with {p.program.office} ↗
+          </Text>
+        )}
+        <Text style={[s.cardTitle, { marginTop: spacing.sm }]}>{entries ? 'Next chances for an entry' : done ? 'More events' : 'Events that count'}</Text>
+        {p.next_eligible_events.length === 0 && <Text style={s.cardMeta}>Nothing scheduled yet. Check back soon.</Text>}
+        {p.next_eligible_events.map((e, i) => (
+          <EventCard key={e.id} event={e} reason={!entries && i === 0 && left === 1 ? 'This one completes it!' : undefined} />
+        ))}
+        {!done && rules && (
+          <Text onPress={() => Linking.openURL(rules)} accessibilityRole="link" style={{ color: colors.cardinal, fontWeight: '700', paddingVertical: spacing.xs }}>
+            Official rules ↗
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const WAYS: { value: PerkWay; label: string }[] = [
+  { value: 'attend', label: '📍 Show up' },
+  { value: 'task', label: '✅ Small tasks' },
+  { value: 'apply', label: '📝 Apply' },
+  { value: 'compete', label: '🏅 Compete' },
+];
+type PerkKind = 'all' | 'redeemable' | 'recognition';
+
+function Perks() {
+  const perks = useApi(() => api.rewards.perks());
+  const [kind, setKind] = useState<PerkKind>('all');
+  const [way, setWay] = useState<PerkWay | null>(null);
+  const list = (perks.data?.perks ?? []).filter((p) => (kind === 'all' || (kind === 'redeemable') === p.redeemable) && (!way || p.way === way));
+
+  return (
+    <View style={{ gap: spacing.md }}>
+      <Text style={s.section} accessibilityRole="header">
+        🎁 Ways to earn around USC
+      </Text>
+      <Text style={s.cardMeta}>Redeemable = money, gift cards, prizes or food. Recognition = honor cords, trophies, priority access.</Text>
+      <Segmented
+        value={kind}
+        onChange={setKind}
+        options={[
+          { value: 'all', label: 'All' },
+          { value: 'redeemable', label: '💵 Redeemable' },
+          { value: 'recognition', label: '🎖️ Recognition' },
+        ]}
+      />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+        {WAYS.map((w) => (
+          <FilterChip key={w.value} on={way === w.value} onPress={() => setWay(way === w.value ? null : w.value)} label={w.label} />
+        ))}
+      </ScrollView>
+      {perks.loading && !perks.data && <Loading />}
+      {perks.error && <ErrorBox message={perks.error} onRetry={perks.reload} />}
+      {perks.data && list.length === 0 && <Empty emoji="🔎" title="Nothing matches those filters" />}
+      {list.map((p) => (
+        <PerkCard key={p.id} perk={p} />
+      ))}
+      {perks.data && (
+        <Text style={{ fontSize: fontSize.xs, color: colors.muted }}>
+          Checked against each office&apos;s official page on {shortDate(`${perks.data.checked_on}T20:00:00Z`)}. Rules change, so confirm on the official page.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function PerkCard({ perk }: { perk: Perk }) {
+  const way = WAYS.find((w) => w.value === perk.way);
+  const internal = perk.url.startsWith('/');
+  const open = () => (internal ? router.push(perk.url as never) : Linking.openURL(perk.url));
+  return (
+    <View style={[s.card, { flexDirection: 'column', gap: spacing.xs }]}>
+      <View style={s.chips}>
+        <Chip>{way?.label}</Chip>
+        <Chip tone={perk.redeemable ? 'gold' : 'plain'}>{perk.redeemable ? '💵 Redeemable' : '🎖️ Recognition'}</Chip>
+        {perk.tracked_program_id && <Chip tone="cardinal">Tracked in TrojanHub</Chip>}
+        {perk.deadline && new Date(perk.deadline) > new Date() && <Chip tone="green">Apply by {shortDate(perk.deadline)}</Chip>}
+      </View>
+      <Text style={s.cardTitle}>{perk.name}</Text>
+      <Text style={[s.cardMeta, { fontWeight: '600' }]}>{perk.office}</Text>
+      <Text style={{ color: colors.ink }}>
+        <Text style={{ fontWeight: '700' }}>You get: </Text>
+        {perk.reward}
+      </Text>
+      <Text style={{ color: colors.ink }}>
+        <Text style={{ fontWeight: '700' }}>How: </Text>
+        {perk.how_to_earn}
+      </Text>
+      <Text style={s.cardMeta}>
+        {perk.who} · {perk.when}
+      </Text>
+      <Text onPress={open} accessibilityRole="link" style={{ color: colors.cardinal, fontWeight: '700', paddingVertical: spacing.sm }}>
+        {internal ? 'Open in TrojanHub →' : 'Official page ↗'}
+      </Text>
     </View>
   );
 }

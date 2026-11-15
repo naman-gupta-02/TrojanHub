@@ -1,4 +1,4 @@
-"""P3 demo data: orgs, 20 upcoming events, 3 past ones, 9 deals, 2 reward programs, a demo user.
+"""P3 demo data: orgs, 22 upcoming events, 4 past ones, 9 deals, 2 reward programs, a demo user.
 
     cd services/ai && python -m app.events.seed
 
@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 from app.core.auth import DEMO_USER_ID
 from app.core.supabase import get_supabase
+from app.events import perks
 from app.events.dates import LA, iso, la_today, now_utc
 
 B = {code: f"b0000000-0000-0000-0000-0000000000{n:02d}" for n, code in enumerate(
@@ -34,13 +35,19 @@ ORGS = [
 ]
 ORG = {name: oid for oid, name, _ in ORGS}
 
+# Real USC programs (see perks.py for the sources). The demo events below stand in for each
+# office's own events, and TrojanHub only keeps the student's own count: the office's official
+# check-in or form is what earns the reward.
 PROGRAMS = [
-    {"id": "93000000-0000-0000-0000-000000000001", "name": "Career Event Series", "office": "Viterbi Career Connections",
-     "reward_desc": "Demo program: attend 5 career events to unlock the office's perk. Check the official page for the real rules.",
-     "required_count": 5, "rules_url": "https://viterbicareers.usc.edu/"},
-    {"id": "93000000-0000-0000-0000-000000000002", "name": "Workshop Passport", "office": "USC Career Center",
-     "reward_desc": "Demo program: 3 workshops earns a passport stamp. Check the official page for the real rules.",
-     "required_count": 3, "rules_url": "https://careers.usc.edu/"},
+    {"id": perks.CAREER_FEST_PROGRAM, "name": "Career Fest prize drawing", "office": "USC Career Center",
+     "reward_desc": "Every Career Fest event you check in to is one more entry in the prize drawing (four winners). "
+                    "Career Fest runs in late January; this week's career events stand in for it in the demo.",
+     "required_count": 1, "rules_url": "https://careers.usc.edu/career-fest-2026/"},
+    {"id": perks.CPF_PROGRAM, "name": "CPF Student Scholars, Tier 1", "office": "Center for the Political Future",
+     "reward_desc": "Tier 1 (CPF Scholar): a private jobs page, priority enrollment in CPF programs and recommendation "
+                    "letters. Send proof of each event through CPF's Student Scholars form. Demo goal of 3 events; "
+                    "the real count is in CPF's tier rubric.",
+     "required_count": 3, "rules_url": "https://dornsife.usc.edu/center-for-political-future/jesse-m-unruh-institute-of-politics/cpf-student-scholars-program/"},
 ]
 P1, P2 = PROGRAMS[0]["id"], PROGRAMS[1]["id"]
 
@@ -129,11 +136,17 @@ def events() -> list[dict]:
         ev(21, "Tech Industry Talk", at(-7, 18), at(-7, 19), "SAL", "SAL 101", "career", None),
         ev(22, "Networking Night", at(-4, 18), at(-4, 20), "TCC", "TCC 450", "career", None),
         ev(23, "Internship Panel", at(-2, 17), at(-2, 18), "RTH", "RTH 115", "career", None),
+        ev(24, "Election Night Debrief", at(-3, 18), at(-3, 19, 30), "THH", "THH 201", "academic", None),
+        # --- civic events (count toward the CPF demo program) -------------------------
+        ev(25, "Campaigns 101 Study Group", at(2, 17), at(2, 18, 30), "THH", "THH 116", "academic", None, "Free snacks",
+           desc="A small-group session on how campaigns are run, with a guest organizer."),
+        ev(26, "Lunch Talk: Running for City Council", at(5, 12), at(5, 13), "TCC", "TCC 450", "academic", None, "Free lunch",
+           desc="A local council candidate on what running for office is really like. Q&A after."),
     ]
 
 
-PROGRAM_EVENTS = [(P1, eid(n)) for n in (21, 22, 23, 4, 6, 9, 12)] + [(P2, eid(n)) for n in (6, 9, 16)]
-ATTENDED = [eid(21), eid(22), eid(23)]
+PROGRAM_EVENTS = [(P1, eid(n)) for n in (21, 22, 23, 4, 6, 9, 12, 16)] + [(P2, eid(n)) for n in (24, 25, 26)]
+ATTENDED = [eid(21), eid(22), eid(23), eid(24)]
 SAVES = [(eid(1), False), (eid(2), True), (eid(7), False)]
 
 
@@ -189,10 +202,13 @@ def run() -> None:
     sb.table("events").upsert(ev).execute()
     sb.table("deals").upsert(deals()).execute()
     sb.table("reward_programs").upsert(PROGRAMS).execute()
-    sb.table("reward_program_events").upsert([{"program_id": p, "event_id": e} for p, e in PROGRAM_EVENTS]).execute()
-    # reset the demo user's check-ins and saves, so rewards show 3/5 again and reminders re-fire
+    # replace the links, so events from older seed versions stop counting
+    sb.table("reward_program_events").delete().in_("program_id", [P1, P2]).execute()
+    sb.table("reward_program_events").insert([{"program_id": p, "event_id": e} for p, e in PROGRAM_EVENTS]).execute()
+    # reset the demo user's check-ins and saves, so rewards show the same progress and reminders re-fire
+    starts = {e["id"]: e["starts_at"] for e in ev}
     sb.table("attendance").delete().eq("user_id", DEMO_USER_ID).execute()
-    sb.table("attendance").insert([{"user_id": DEMO_USER_ID, "event_id": e} for e in ATTENDED]).execute()
+    sb.table("attendance").insert([{"user_id": DEMO_USER_ID, "event_id": e, "checked_in_at": starts[e]} for e in ATTENDED]).execute()
     sb.table("event_saves").delete().eq("user_id", DEMO_USER_ID).execute()
     sb.table("event_saves").insert([{"user_id": DEMO_USER_ID, "event_id": e, "registered": r} for e, r in SAVES]).execute()
     sb.table("notification_log").delete().eq("user_id", DEMO_USER_ID).execute()

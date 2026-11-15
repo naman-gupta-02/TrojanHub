@@ -14,7 +14,9 @@ GET    /me/events                -> my saved / registered events
 GET    /deals/search             ?q=&active=true
 POST   /deals                    create
 POST   /deals/{id}/vote          {still_active}
-GET    /rewards/progress
+GET    /rewards/progress         -> per program: attended, events that counted, completed_at, style
+GET    /rewards/perks            -> ways to earn around USC (public)
+GET    /rewards/checkins         -> every event I checked in to
 GET    /feed
 
 Real data whenever Supabase is configured (see settings.py); otherwise the mocks in
@@ -37,7 +39,7 @@ from app.core.auth import ADMIN_ROLES, get_user_id, require_signed_in
 from app.core.config import settings
 from app.core.mocks import load_mock
 from app.core.supabase import get_supabase
-from app.events import dedupe, feed as feed_builder, flyer, ics, rewards, store
+from app.events import dedupe, feed as feed_builder, flyer, ics, perks, rewards, store
 from app.events.dates import iso, now_utc, parse_ts
 from app.events.settings import db_live, llm_live, signing_secret
 
@@ -284,7 +286,8 @@ def get_event(event_id: str, user_id: str = Depends(get_user_id)) -> dict:
         attended = store.attended_ids(user_id)
         programs = [(p, ids) for p, ids in store.reward_programs() if event_id in ids]
         counts_toward = [
-            {"program_id": p["program"]["id"], "name": p["program"]["name"], "attended": p["attended"], "required": p["required"]}
+            {"program_id": p["program"]["id"], "name": p["program"]["name"], "attended": p["attended"],
+             "required": p["required"], "style": p["style"]}
             for p in rewards.progress(user_id, programs=programs, attended=attended)
         ]
     return {
@@ -467,6 +470,24 @@ def rewards_progress(user_id: str = Depends(get_user_id)) -> list:
     if not db_live():
         return load_mock("rewards_progress")
     return rewards.progress(user_id)
+
+
+@router.get("/rewards/perks")
+def rewards_perks() -> dict:
+    """Ways to earn around USC (perks.py). Public: the same list for everyone, signed in or not."""
+    return perks.perks()
+
+
+@router.get("/rewards/checkins")
+def my_checkins(user_id: str = Depends(get_user_id)) -> dict:
+    """Every event I checked in to, newest first (the history behind my rewards)."""
+    if not db_live():
+        return {"checkins": []}
+    checkins = store.attendance(user_id)
+    events = {e["id"]: e for e in store.events_by_ids(checkins)}
+    rows = [{"event": events[i], "checked_in_at": at} for i, at in checkins.items() if i in events]
+    rows.sort(key=lambda r: r["checked_in_at"] or "", reverse=True)
+    return {"checkins": rows}
 
 
 @router.get("/feed")

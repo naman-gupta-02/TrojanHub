@@ -229,6 +229,12 @@ def attended_ids(user_id: str) -> set[str]:
     return {r["event_id"] for r in rows}
 
 
+def attendance(user_id: str) -> dict[str, str]:
+    """event_id -> checked_in_at, for one student"""
+    rows = _rows(get_supabase().table("attendance").select("event_id, checked_in_at").eq("user_id", user_id).execute())
+    return {r["event_id"]: r["checked_in_at"] for r in rows}
+
+
 def check_in(user_id: str, event_id: str) -> bool:
     """Returns False if the user was already checked in."""
     if event_id in attended_ids(user_id):

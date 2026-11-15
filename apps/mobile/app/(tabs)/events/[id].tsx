@@ -101,8 +101,9 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
           <Text style={s.cardTitle}>🏆 Counts toward rewards</Text>
           {d.counts_toward.map((p) => (
             <Text key={p.program_id} style={{ color: colors.ink }}>
-              {p.name}: {p.attended} of {p.required}
-              {p.attended + 1 === p.required && !d.attended ? <Text style={{ color: colors.cardinal, fontWeight: '700' }}> · this one completes it!</Text> : null}
+              {p.style === 'entries' ? `${p.name}: ${p.attended} entr${p.attended === 1 ? 'y' : 'ies'} so far` : `${p.name}: ${p.attended} of ${p.required}`}
+              {p.style === 'entries' && !d.attended ? <Text style={{ color: colors.cardinal, fontWeight: '700' }}> · checking in adds one</Text> : null}
+              {p.style !== 'entries' && p.attended + 1 === p.required && !d.attended ? <Text style={{ color: colors.cardinal, fontWeight: '700' }}> · this one completes it!</Text> : null}
             </Text>
           ))}
         </View>
@@ -242,7 +243,9 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
         <Text style={{ color: colors.success, fontWeight: '700' }}>✓ You checked in</Text>
         {result?.rewards.map((r) => (
           <Text key={r.program.id} style={{ color: colors.ink }}>
-            {r.attended >= r.required ? `🎉 ${r.program.name} complete! Claim your reward from ${r.program.office}.` : `${r.program.name}: ${r.attended} of ${r.required}, ${r.required - r.attended} to go`}
+            {r.style === 'entries'
+              ? `🎟️ ${r.program.name}: ${r.attended} entr${r.attended === 1 ? 'y' : 'ies'}`
+              : r.attended >= r.required ? `🎉 ${r.program.name} complete! Claim your reward from ${r.program.office}.` : `${r.program.name}: ${r.attended} of ${r.required}, ${r.required - r.attended} to go`}
           </Text>
         ))}
       </View>

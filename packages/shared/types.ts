@@ -359,7 +359,7 @@ export interface EventDetailResponse {
   saved: boolean;
   registered: boolean;
   attended: boolean;
-  counts_toward: { program_id: UUID; name: string; attended: number; required: number }[];
+  counts_toward: { program_id: UUID; name: string; attended: number; required: number; style?: RewardStyle }[];
   google_calendar_url: string;
   ics_url: string;
 }
@@ -485,14 +485,55 @@ export interface SaveEventResponse {
   register_url?: string;
 }
 
+/** goal = "2 of 3 events" toward a reward; entries = every check-in is one more entry in a drawing */
+export type RewardStyle = "goal" | "entries";
+
 export interface RewardProgress {
   program: RewardProgram;
   attended: number;
   required: number;
   next_eligible_events: Event[];
+  // P3 additions (optional, so older clients and mocks still type-check)
+  style?: RewardStyle;
+  /** The student's check-ins that counted, oldest first */
+  attended_events?: { id: UUID; title: string; starts_at: ISODate; checked_in_at: ISODate | null }[];
+  /** When the goal was reached (goal style only); null while in progress */
+  completed_at?: ISODate | null;
 }
 
 export type RewardsProgressResponse = RewardProgress[];
+
+/** GET /rewards/checkins: every event the student checked in to, newest first */
+export interface MyCheckinsResponse {
+  checkins: { event: Event; checked_in_at: ISODate | null }[];
+}
+
+/** How a perk is earned: show up, do a small task, apply, or compete */
+export type PerkWay = "attend" | "task" | "apply" | "compete";
+
+/** One way to earn something around USC (GET /rewards/perks). Facts come from `url`. */
+export interface Perk {
+  id: string;
+  name: string;
+  office: string;
+  way: PerkWay;
+  /** true = money, gift cards, prizes, food; false = recognition (honor cord, trophy, priority access) */
+  redeemable: boolean;
+  reward: string;
+  how_to_earn: string;
+  who: string;
+  when: string;
+  deadline: ISODate | null;
+  /** Official page (or a TrojanHub path starting with "/") */
+  url: string;
+  /** TrojanHub check-ins count toward this reward program */
+  tracked_program_id: UUID | null;
+}
+
+export interface PerksResponse {
+  perks: Perk[];
+  checked_on: ISODate; // the date the official pages were last checked
+}
 
 export type FeedItem = { kind: "event"; event: Event; reason?: string } | { kind: "deal"; deal: Deal; reason?: string };
 

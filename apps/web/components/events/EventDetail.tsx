@@ -122,8 +122,17 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
             <p className="font-bold">🏆 Counts toward rewards</p>
             {d.counts_toward.map((p) => (
               <Link key={p.program_id} href="/rewards" className="block text-sm hover:underline">
-                {p.name}: {p.attended} of {p.required} attended
-                {p.attended + 1 === p.required && !d.attended && <strong className="text-cardinal"> · this one completes it!</strong>}
+                {p.style === "entries" ? (
+                  <>
+                    {p.name}: {p.attended} entr{p.attended === 1 ? "y" : "ies"} so far
+                    {!d.attended && <strong className="text-cardinal"> · checking in here adds one</strong>}
+                  </>
+                ) : (
+                  <>
+                    {p.name}: {p.attended} of {p.required} attended
+                    {p.attended + 1 === p.required && !d.attended && <strong className="text-cardinal"> · this one completes it!</strong>}
+                  </>
+                )}
               </Link>
             ))}
           </section>
@@ -250,7 +259,11 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
         <p className="font-bold text-success">✓ You checked in</p>
         {result?.rewards.map((r) => (
           <p key={r.program.id} className="text-sm">
-            {r.attended >= r.required ? (
+            {r.style === "entries" ? (
+              <>
+                🎟️ {r.program.name}: <strong>{r.attended} entr{r.attended === 1 ? "y" : "ies"}</strong>
+              </>
+            ) : r.attended >= r.required ? (
               <strong>🎉 {r.program.name} complete! Claim your reward from {r.program.office}.</strong>
             ) : (
               <>
