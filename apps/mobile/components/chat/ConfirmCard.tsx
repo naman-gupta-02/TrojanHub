@@ -3,7 +3,7 @@ import { colors, fontSize, minTapTarget, radius, spacing } from '@trojanhub/shar
 import { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { EDITABLE, type ConfirmCard } from './chatState';
+import { editableFields, type ConfirmCard } from './chatState';
 
 type Props = {
   card: ConfirmCard;
@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function ConfirmCardView({ card, onAnswer }: Props) {
-  const fields = EDITABLE[card.tool] ?? [];
+  const fields = editableFields(card);
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, unknown>>({});
   const value = (key: string) => (key in edits ? edits[key] : card.draft[key]);

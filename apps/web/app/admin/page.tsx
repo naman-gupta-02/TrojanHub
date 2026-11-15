@@ -281,6 +281,13 @@ function ComplaintRow({ row, saving, onSave }: { row: AdminComplaintRow; saving:
 
       <td className="max-w-xs px-4 py-4">
         <p>&ldquo;{row.text}&rdquo;</p>
+        {row.photo_url && (
+          // Signed link to a private photo, valid about an hour (reload the page for a fresh one).
+          <a href={row.photo_url} target="_blank" rel="noreferrer" className="mt-2 inline-block" title="Open the student's photo">
+            {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not optimizable */}
+            <img src={row.photo_url} alt="Photo attached to this report" className="h-20 w-28 rounded-md border border-line object-cover" />
+          </a>
+        )}
         <p className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold">{location}</span>
           <span className={`rounded-full px-2 py-0.5 ${URGENCY_STYLE[row.urgency]}`}>{row.urgency}</span>

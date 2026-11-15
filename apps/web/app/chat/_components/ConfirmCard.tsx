@@ -2,7 +2,7 @@
 // Confirm card for actions that write data: Edit / Confirm / Cancel (ARCHITECTURE.md §7.1).
 import { useState } from "react";
 
-import { EDITABLE, type ConfirmCard } from "../_lib/chatState";
+import { editableFields, type ConfirmCard } from "../_lib/chatState";
 
 type Props = {
   card: ConfirmCard;
@@ -10,7 +10,7 @@ type Props = {
 };
 
 export function ConfirmCardView({ card, onAnswer }: Props) {
-  const fields = EDITABLE[card.tool] ?? [];
+  const fields = editableFields(card);
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, unknown>>({});
   const value = (key: string) => (key in edits ? edits[key] : card.draft[key]);

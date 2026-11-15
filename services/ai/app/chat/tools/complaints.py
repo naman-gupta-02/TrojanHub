@@ -24,13 +24,16 @@ async def log_complaint(args: dict, ctx: ToolContext) -> ToolOutcome:
 
     d = res["draft"]
     dup = res.get("duplicate_ticket")
-    draft = {**d, "text": text, "anonymous": False}
+    photo = store.resolve_photo(ctx.session_id, args.get("image_url"))  # the real image, never shown to the LLM
+    draft = {**d, "text": text, "anonymous": False, "has_photo": bool(photo)}
     action = store.add_pending(session_id=ctx.session_id, user_id=ctx.user_id, tool="log_complaint",
-                               args=args, draft=draft, auth_header=ctx.auth_header)
+                               args={**args, "_photo": photo}, draft=draft, auth_header=ctx.auth_header)
     where = " ".join(filter(None, [d.get("building"), d.get("room")]))
     summary = " · ".join(filter(None, [d["department"], d["category"], d["urgency"], where]))
     if dup:
         summary += f" · {_others(dup['report_count'])}"
+    if photo:
+        summary += " · with photo"
     return ToolOutcome(
         {"status": "awaiting_confirmation", "action_id": action.action_id, "draft": d, "duplicate_ticket": dup},
         confirm={"type": "confirm", "action_id": action.action_id, "tool": "log_complaint",
@@ -43,6 +46,8 @@ async def confirm_log_complaint(action: store.PendingAction, draft: dict) -> tup
     # so the endpoint files exactly the draft it showed (it keeps the sorting keyed on the text).
     body = {"text": draft["text"], "room": draft.get("room"), "anonymous": bool(draft.get("anonymous")),
             "confirm": True, "source": "chat"}
+    if action.args.get("_photo") and draft.get("has_photo", True):
+        body["photo"] = action.args["_photo"]
     if draft.get("building") != action.draft.get("building"):
         body["building"] = draft.get("building")  # the student changed it on the card: send their words
     else:
@@ -54,6 +59,8 @@ async def confirm_log_complaint(action: store.PendingAction, draft: dict) -> tup
     t = res["ticket"]
     count = t.get("report_count", 1)
     msg = f"Logged! Sent to {t['department']}. " + ("You're the first to report this." if count <= 1 else f"{count} reports on this issue so far.")
+    if res.get("photo_saved"):
+        msg += " Your photo is attached (only staff can see it)."
     if res.get("route_url"):
         msg += f" Official form: {res['route_url']}"
     return "done", {**res, "message": msg}

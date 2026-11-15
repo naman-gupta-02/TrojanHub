@@ -1,6 +1,6 @@
 """P4 Jaymin: Smart Complaints (ARCHITECTURE.md §6, §7.4).
 
-POST /complaints            {text, building_id?, building?, room?, anonymous?, confirm?, source?}
+POST /complaints            {text, building_id?, building?, room?, anonymous?, confirm?, source?, photo?}
 GET  /complaints/mine
 POST /tickets/{id}/upvote
 
@@ -21,6 +21,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.complaints import store
+from app.complaints.photos import Photo, PhotoError, load_photo, new_path
 from app.complaints.classify import Classification, classify, find_building
 from app.complaints.dedupe import find_duplicate
 from app.complaints.routing import build_route, find_route
@@ -45,6 +46,9 @@ class ComplaintRequest(BaseModel):
     anonymous: bool = False
     confirm: bool = False
     source: Literal["chat", "form"] = "form"
+    # Optional photo of the problem: a data: URL, or a link into this project's Storage.
+    # Saved (privately) only when the report is confirmed.
+    photo: str | None = None
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -125,7 +129,7 @@ def _draft(result: Classification, building: dict | None) -> dict:
     }
 
 
-def _handle_complaint(req: ComplaintRequest, user_id: str) -> dict:
+def _handle_complaint(req: ComplaintRequest, user_id: str, photo: Photo | None = None) -> dict:
     result, building, embedding = _sort_report(req)
     draft = _draft(result, building)
 
@@ -153,40 +157,62 @@ def _handle_complaint(req: ComplaintRequest, user_id: str) -> dict:
         # The same student reporting the same problem again must not inflate the count.
         if reporter_id and store.has_reported(ticket["id"], reporter_id):
             return {"ticket": ticket, "route_url": ticket.get("route_url")}
-        ticket = store.add_report(ticket["id"]) or ticket
-    else:
-        ticket = store.insert_ticket({
-            "building_id": building_id,
-            "room": result.room,
-            "department": result.department,
-            "category": result.category,
-            "urgency": result.urgency,
-            "summary": result.summary,
-            # "sent" = routed to the office's own form or email. No route on file -> stays "reported".
-            "status": "sent" if route_url else "reported",
-            "route_url": route_url,
-            "embedding": embedding,
-        })
 
-    store.insert_complaint({
-        "ticket_id": ticket["id"],
-        "reporter_id": reporter_id,
-        "raw_text": req.text,
-        "room": result.room,
-        "building_id": building_id,
-        "source": req.source,
-        "ai_department": result.department,
-        "ai_confidence": result.confidence,
-        "ai_reason": result.reason,
-        "forwarded_to": forwarded_to,
-        "forwarded_at": datetime.now(timezone.utc).isoformat() if forwarded_to else None,
-    })
-    return {"ticket": ticket, "route_url": ticket.get("route_url")}
+    # Store the photo before touching any rows, so a failed upload leaves nothing half-done.
+    photo_path = new_path(photo) if photo else None
+    if photo:
+        store.upload_photo(photo_path, photo.data, photo.mime)
+
+    try:
+        if duplicate:
+            ticket = store.add_report(ticket["id"]) or ticket
+        else:
+            ticket = store.insert_ticket({
+                "building_id": building_id,
+                "room": result.room,
+                "department": result.department,
+                "category": result.category,
+                "urgency": result.urgency,
+                "summary": result.summary,
+                # "sent" = routed to the office's own form or email. No route on file -> stays "reported".
+                "status": "sent" if route_url else "reported",
+                "route_url": route_url,
+                "embedding": embedding,
+            })
+
+        row = {
+            "ticket_id": ticket["id"],
+            "reporter_id": reporter_id,
+            "raw_text": req.text,
+            "room": result.room,
+            "building_id": building_id,
+            "source": req.source,
+            "ai_department": result.department,
+            "ai_confidence": result.confidence,
+            "ai_reason": result.reason,
+            "forwarded_to": forwarded_to,
+            "forwarded_at": datetime.now(timezone.utc).isoformat() if forwarded_to else None,
+        }
+        if photo_path:  # only sent when there is a photo, so text-only reports work before the photo migration
+            row["photo_path"] = photo_path
+        store.insert_complaint(row)
+    except Exception:
+        if photo_path:  # don't leave an orphan photo behind
+            try:
+                store.delete_photo(photo_path)
+            except Exception:  # noqa: BLE001
+                log.warning("couldn't remove orphan complaint photo %s", photo_path)
+        raise
+    return {"ticket": ticket, "route_url": ticket.get("route_url"), "photo_saved": bool(photo_path)}
 
 
 def _my_complaints(user_id: str) -> dict:
     rows = store.complaints_for(user_id)
-    return {"complaints": [{"complaint": {k: v for k, v in row.items() if k != "ticket"}, "ticket": row.get("ticket")} for row in rows]}
+    hidden = {"ticket", "photo_path"}  # the storage path stays server-side
+    return {"complaints": [
+        {"complaint": {**{k: v for k, v in row.items() if k not in hidden}, "has_photo": bool(row.get("photo_path"))}, "ticket": row.get("ticket")}
+        for row in rows
+    ]}
 
 
 def _upvote(ticket_id: str) -> dict:
@@ -215,7 +241,13 @@ async def create_complaint(req: ComplaintRequest, user_id: str = Depends(get_use
         raise _error(422, "empty_text", "Describe the problem in a sentence.")
     if len(req.text) > MAX_TEXT_CHARS:
         raise _error(422, "text_too_long", f"Keep the report under {MAX_TEXT_CHARS} characters.")
-    return await _run(_handle_complaint, req, user_id)
+    photo = None
+    if req.photo:  # checked on drafts too, so a bad photo is caught before the student confirms
+        try:
+            photo = await run_in_threadpool(load_photo, req.photo)
+        except PhotoError as e:
+            raise _error(422, "bad_photo", str(e)) from e
+    return await _run(_handle_complaint, req, user_id, photo)
 
 
 @router.get("/complaints/mine")

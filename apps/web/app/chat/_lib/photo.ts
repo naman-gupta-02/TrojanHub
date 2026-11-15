@@ -1,6 +1,6 @@
-// Photo for Tommy: upload to Supabase Storage ("photos" bucket) when logged in, otherwise send
-// it inline as a data: URL (the AI service swaps it for a short reference before the LLM sees it).
-import { supabase } from "@/lib/supabase";
+// Photo for Tommy: shrunk, then sent inline as a data: URL. The AI service decides where it goes
+// (a found item's photo becomes public in Lost & Found; a complaint photo goes to a private
+// bucket only staff can see), so the app never uploads it to a public bucket itself.
 
 const MAX_SIDE = 1280;
 
@@ -27,14 +27,5 @@ function toDataUrl(blob: Blob): Promise<string> {
 export async function preparePhoto(file: File): Promise<{ url: string; previewUri: string }> {
   const blob = await shrink(file);
   const previewUri = URL.createObjectURL(blob);
-  if (supabase) {
-    const { data: session } = await supabase.auth.getSession();
-    const uid = session.session?.user.id;
-    if (uid) {
-      const path = `chat/${uid}/${Date.now()}.jpg`;
-      const { error } = await supabase.storage.from("photos").upload(path, blob, { contentType: "image/jpeg" });
-      if (!error) return { url: supabase.storage.from("photos").getPublicUrl(path).data.publicUrl, previewUri };
-    }
-  }
   return { url: await toDataUrl(blob), previewUri };
 }

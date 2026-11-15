@@ -73,9 +73,10 @@ def _filter(rows: list[dict], department: str | None, building: str | None, urge
 # ---------------------------------------------------------------------------
 # Real mode
 # ---------------------------------------------------------------------------
-def _to_row(c: dict) -> dict:
+def _to_row(c: dict, photo_links: dict[str, str] | None = None) -> dict:
     """One `complaints` row (with its ticket and building) -> AdminComplaintRow."""
     ticket = c.get("ticket") or {}
+    photo_path = c.get("photo_path")
     return {
         "id": c["id"],
         "ticket_id": c.get("ticket_id"),
@@ -93,7 +94,20 @@ def _to_row(c: dict) -> dict:
         "status": ticket.get("status") or "reported",
         "urgency": ticket.get("urgency") or "medium",
         "report_count": ticket.get("report_count") or 1,
+        # short-lived signed link to the private photo (None if no photo or the link failed)
+        "photo_url": (photo_links or {}).get(photo_path) if photo_path else None,
     }
+
+
+def _photo_links(complaints: list[dict]) -> dict[str, str]:
+    paths = [c["photo_path"] for c in complaints if c.get("photo_path")]
+    if not paths:
+        return {}
+    try:
+        return store.signed_photo_urls(paths)
+    except Exception as e:  # noqa: BLE001 - a storage hiccup must not break the dashboard
+        log.warning("couldn't sign complaint photo links: %s", e)
+        return {}
 
 
 def _since(value: str | None) -> str | None:
@@ -110,7 +124,9 @@ def _since(value: str | None) -> str | None:
 
 
 def _rows(since: str | None = None) -> list[dict]:
-    return [_to_row(c) for c in store.admin_complaints(since=_since(since))]
+    complaints = store.admin_complaints(since=_since(since))
+    links = _photo_links(complaints)
+    return [_to_row(c, links) for c in complaints]
 
 
 def _one(complaint_id: str) -> dict:
@@ -121,7 +137,7 @@ def _one(complaint_id: str) -> dict:
     found = store.admin_complaints(complaint_id=complaint_id)
     if not found:
         raise _not_found()
-    return _to_row(found[0])
+    return _to_row(found[0], _photo_links(found))
 
 
 def _patch(complaint_id: str, patch: ComplaintPatch) -> dict:

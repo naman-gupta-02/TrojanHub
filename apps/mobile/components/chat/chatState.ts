@@ -84,11 +84,14 @@ export function toolLabel(t: ToolStatus): string {
 }
 
 /** Fields a student may edit on a confirm card before saying yes. */
-export const EDITABLE: Record<string, { key: string; label: string; kind: "text" | "bool" }[]> = {
+export type EditField = { key: string; label: string; kind: "text" | "bool"; onlyIf?: string };
+
+export const EDITABLE: Record<string, EditField[]> = {
   log_complaint: [
     { key: "building", label: "Building", kind: "text" },
     { key: "room", label: "Room", kind: "text" },
     { key: "anonymous", label: "Report anonymously", kind: "bool" },
+    { key: "has_photo", label: "Include my photo (only staff can see it)", kind: "bool", onlyIf: "has_photo" },
   ],
   report_found_item: [
     { key: "description", label: "What is it?", kind: "text" },
@@ -108,6 +111,11 @@ export const SUGGESTED_PROMPTS = [
   "Did anyone find a black Hydro Flask?",
   "I found a blue umbrella at Leavey",
 ];
+
+/** The edit fields to show for a card (e.g. the photo toggle only when a photo is attached). */
+export function editableFields(card: { tool: string; draft: Record<string, unknown> }): EditField[] {
+  return (EDITABLE[card.tool] ?? []).filter((f) => !f.onlyIf || Boolean(card.draft[f.onlyIf]));
+}
 
 /** Split answer text into plain text and [n] citation markers. */
 export type Piece = { kind: "text"; text: string } | { kind: "cite"; n: number } | { kind: "bold"; text: string } | { kind: "link"; text: string; url: string };

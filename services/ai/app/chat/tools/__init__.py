@@ -87,6 +87,7 @@ TOOLS: list[dict] = [
             "text": {"type": "string", "description": "The student's own words"},
             "building": {"type": "string", "description": "Building code or name, e.g. 'GFS'"},
             "room": {"type": "string"},
+            "image_url": {"type": "string", "description": "The photo the student attached of the problem (photo://N), if any"},
         },
         ["text"],
     ),

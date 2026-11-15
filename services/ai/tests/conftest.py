@@ -45,6 +45,7 @@ class FakeStore:
     def __init__(self):
         self.tickets: list[dict] = []
         self.complaints: list[dict] = []
+        self.photos: dict[str, tuple[bytes, str]] = {}
         self.routes = [  # ITS has no route on purpose
             {"department": "Facilities", "category": "*", "form_url": "https://fpm.example/form", "email": None},
             {"department": "Housing", "category": "*", "form_url": "https://housing.example/form", "email": None},
@@ -128,6 +129,16 @@ class FakeStore:
         for t in self.tickets:
             if t["id"] == ticket_id:
                 t.update(fields)
+
+    # complaint photos (private bucket)
+    def upload_photo(self, path, data, mime):
+        self.photos[path] = (data, mime)
+
+    def delete_photo(self, path):
+        self.photos.pop(path, None)
+
+    def signed_photo_urls(self, paths):
+        return {p: f"https://storage.example/sign/complaint-photos/{p}?token=t" for p in paths if p in self.photos}
 
 
 @pytest.fixture(autouse=True)

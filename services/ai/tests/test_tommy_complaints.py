@@ -126,3 +126,31 @@ def test_chat_complaint_appears_on_the_admin_dashboard(client, fake, llm):
     row = rows[0]
     assert (row["source"], row["ai_department"], row["building"], row["room"]) == ("chat", "Facilities", "GFS", "213")
     assert row["forwarded_to"] and row["status"] == "sent"
+
+
+def test_photo_from_chat_is_stored_with_the_complaint(client, fake, llm):
+    import base64
+
+    jpeg = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"\x00" * 300).decode()
+    fake_llm = llm(tool_step("log_complaint", text="this chair is broken in SAL 101", image_url="photo://1"), text_step("Tap Confirm."))
+    events = chat(client, "this chair is broken in SAL 101", session="ph1", image_url=jpeg)
+    assert "base64" not in str(fake_llm.calls[0]["messages"])  # the LLM never sees the image data
+    card = card_of(events)
+    assert card["summary"].endswith("· with photo") and card["draft"]["has_photo"] is True
+    assert "base64" not in str(card)  # nor does the card sent to the app
+    assert fake.photos == {}  # nothing stored before Confirm
+
+    body = confirm(client, card, "ph1")
+    assert body["status"] == "done" and "Your photo is attached (only staff can see it)." in body["message"]
+    (path,) = fake.photos
+    assert fake.complaints[0]["photo_path"] == path
+
+
+def test_removing_the_photo_on_the_card_files_without_it(client, fake, llm):
+    import base64
+
+    jpeg = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"\x00" * 300).decode()
+    llm(tool_step("log_complaint", text="broken chair in SAL 101", image_url="photo://1"), text_step("Tap Confirm."))
+    card = card_of(chat(client, "broken chair in SAL 101", session="ph2", image_url=jpeg))
+    body = confirm(client, card, "ph2", edits={"has_photo": False})
+    assert body["status"] == "done" and fake.photos == {} and not fake.complaints[0].get("photo_path")

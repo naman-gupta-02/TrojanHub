@@ -68,7 +68,7 @@ export function Composer({ busy, onSend, onStop }: Props) {
         <button
           type="button"
           aria-label="Attach a photo"
-          title="Attach a photo (found item or flyer)"
+          title="Attach a photo (a problem, a flyer, or something you found)"
           className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-background hover:text-cardinal"
           onClick={() => fileInput.current?.click()}
         >

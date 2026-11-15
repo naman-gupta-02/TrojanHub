@@ -237,7 +237,7 @@ and `created_at timestamptz default now()` unless noted.
 | Table | Key columns |
 |---|---|
 | `tickets` | `building_id`, `room`, `department`, `category`, `urgency` (`low`/`medium`/`high`/`safety`), `summary`, `status` (`reported`/`sent`/`resolved`), `report_count`, `route_url`, `embedding vector(<D>)` |
-| `complaints` | `ticket_id`, `reporter_id` (nullable = anonymous), `raw_text`, `room`, `building_id` |
+| `complaints` | `ticket_id`, `reporter_id` (nullable = anonymous), `raw_text`, `room`, `building_id`, `photo_path` (in the private `complaint-photos` bucket) |
 | `routes` | `department`, `category`, `form_url`, `email` (seeded from public USC pages) |
 
 **RLS basics:** anyone logged in can read public rows. Users can only edit their own rows. Only org admins can post events as verified. `dept_admin`/`usg_admin` can read admin views. The AI service uses the **service role key**, which only ever lives on the server.
@@ -281,10 +281,10 @@ real endpoint exists.
 ### P4 — Complaints & Admin
 | Method | Path | Body → Response |
 |---|---|---|
-| POST | `/complaints` | `{text, building_id?, building?, room?, anonymous?: bool, confirm?: bool}` (`building` = code or name, for when it isn't in `text`; `building_id` wins) → `{draft:{department, category, urgency, building, room, summary}, duplicate_ticket?: {id, report_count}, safety?: {dps_phone, message}}`. With `confirm:true` → `{ticket, route_url}` |
+| POST | `/complaints` | `{text, building_id?, building?, room?, anonymous?: bool, confirm?: bool, photo?}` (`building` = code or name, for when it isn't in `text`; `building_id` wins). Optional `photo` (data: URL): checked on every call, stored privately only on `confirm:true` → `{draft:{department, category, urgency, building, room, summary}, duplicate_ticket?: {id, report_count}, safety?: {dps_phone, message}}`. With `confirm:true` → `{ticket, route_url}` |
 | GET | `/complaints/mine` | → user's complaints + ticket status |
 | POST | `/tickets/{id}/upvote` | → `{report_count}` |
-| GET | `/admin/complaints` | `?department=&building=&from=` → `[{logged_at, text, building, room, source, ai_department, ai_confidence, ai_reason, corrected_department, forwarded_to, forwarded_at, status, report_count}]` |
+| GET | `/admin/complaints` | `?department=&building=&from=` → `[{logged_at, text, building, room, source, ai_department, ai_confidence, ai_reason, corrected_department, forwarded_to, forwarded_at, status, report_count, photo_url}]` (`photo_url` = signed link, ~1 hour) |
 | PATCH | `/admin/complaints/{id}` | `{corrected_department?, status?}` → updated row |
 | GET | `/admin/stats` | → `{total, forwarded_pct, routing_accuracy_pct, by_department:[…], by_building:[…]}` |
 | GET | `/admin/tickets.csv` | → CSV export |

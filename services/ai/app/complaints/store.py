@@ -134,3 +134,26 @@ def update_ticket_complaints(ticket_id: str, fields: dict) -> None:
 
 def update_ticket(ticket_id: str, fields: dict) -> None:
     get_supabase().table("tickets").update(fields).eq("id", ticket_id).execute()
+
+
+# ---------------------------------------------------------------------------
+# Complaint photos (private bucket, see supabase/migrations/202611150200_p4_complaint_photos.sql)
+# ---------------------------------------------------------------------------
+PHOTO_BUCKET = "complaint-photos"
+PHOTO_LINK_SECONDS = 3600
+
+
+def upload_photo(path: str, data: bytes, mime: str) -> None:
+    get_supabase().storage.from_(PHOTO_BUCKET).upload(path, data, {"content-type": mime, "upsert": "false"})
+
+
+def delete_photo(path: str) -> None:
+    get_supabase().storage.from_(PHOTO_BUCKET).remove([path])
+
+
+def signed_photo_urls(paths: list[str]) -> dict[str, str]:
+    """path -> signed link that works for an hour (for the admin dashboard)."""
+    if not paths:
+        return {}
+    items = get_supabase().storage.from_(PHOTO_BUCKET).create_signed_urls(paths, PHOTO_LINK_SECONDS)
+    return {i["path"]: i.get("signedUrl") or i.get("signedURL") for i in items if i.get("path") and (i.get("signedUrl") or i.get("signedURL"))}
