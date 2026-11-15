@@ -11,6 +11,7 @@ import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from functools import lru_cache
 
 import numpy as np
@@ -49,8 +50,21 @@ def _buildings() -> tuple[dict, ...]:
     return tuple(rows)
 
 
+def similar_word(a: str, b: str) -> bool:
+    """Typo-tolerant match for place names: "leavy" ~ "leavey", "dohenny" ~ "doheny".
+    Only for words of 5+ letters with the same first letter, and very close spelling
+    (so "paper" doesn't match "taper")."""
+    a, b = a.lower(), b.lower()
+    if a == b:
+        return True
+    if len(a) < 4 or len(b) < 5 or a[0] != b[0]:
+        return False
+    return SequenceMatcher(None, a, b).ratio() > 0.85
+
+
 def match_building(text: str | None) -> str | None:
-    """Best building for a place description, or None if nothing (or a tie) matches."""
+    """Best building for a place description, or None if nothing (or a tie) matches.
+    Codes must match exactly ("SAL"); name words may have small typos ("leavy library")."""
     if not text:
         return None
     words = set(re.findall(r"[a-z0-9.&]+", text.lower()))
@@ -60,7 +74,9 @@ def match_building(text: str | None) -> str | None:
         for w in b["name"].lower().split():
             if w in words:
                 score += 0.1 if w in _GENERIC else 1.0  # generic words only break ties ("Tutor Hall")
-        if score >= 1:
+            elif w not in _GENERIC and any(similar_word(q, w) for q in words):
+                score += 0.9  # a close misspelling counts a bit less than the exact word
+        if score >= 0.9:
             scores[b["id"]] = score
     if not scores:
         return None

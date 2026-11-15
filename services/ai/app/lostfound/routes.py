@@ -18,9 +18,10 @@ from starlette.concurrency import run_in_threadpool
 from app.core.auth import get_user_id
 from app.core.config import settings
 from app.core.mocks import load_mock
-from app.lostfound import claim, items, search
+from app.lostfound import claim, items, search, warmup
 
 router = APIRouter(tags=["lost & found (P2)"])
+warmup.start()  # real mode: load CLIP + the sentence model now, not on the first request
 
 _VALUABLE_WORDS = re.compile(r"\b(airpods?|earbuds?|phone|iphone|laptop|macbook|tablet|ipad|wallet|id|keys?|card|watch|glasses)\b")
 _VALUABLE_ITEM_ID = "c0000000-0000-0000-0000-000000000002"
