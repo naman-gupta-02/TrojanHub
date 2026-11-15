@@ -33,6 +33,15 @@ insert into routes (department, category, form_url, email) values
   ('DPS',            '*', 'https://dps.usc.edu/contact/', null)
 on conflict (department, category) do nothing;
 
--- TODO P2 (Vishwa): dropoff_points, verified from official DPS / IT pages.
+-- Lost & Found drop-off points (P2). Copied from https://dps.usc.edu/services/lost-and-found/
+-- on 2026-11-14: "DPS operates the university's centralized lost and found service." Found items
+-- are kept 90 days. Contact for both: (213) 740-9759 (UPC), lostandfound@dps.usc.edu.
+-- USC lists no IT / ITS lost & found, so only DPS rows. Hours aren't published, so they stay null.
+-- building_id is null: DPS isn't in `buildings`; the address is in the name so finders see it.
+insert into dropoff_points (id, name, type, building_id, hours, url) values
+  ('dd000000-0000-0000-0000-000000000001', 'DPS Lost & Found, 3667 McClintock Ave (University Park Campus)', 'dps', null, null, 'https://dps.usc.edu/services/lost-and-found/'),
+  ('dd000000-0000-0000-0000-000000000002', 'DPS Lost & Found, 2001 Soto Street (Health Sciences Campus)',    'dps', null, null, 'https://dps.usc.edu/services/lost-and-found/')
+on conflict (id) do nothing;
+
 -- TODO P3 (Parnavi): events, deals, reward_programs.
 -- TODO P4 (Jaymin): 25 demo complaints including the GFS 213 cluster.
