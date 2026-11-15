@@ -16,22 +16,35 @@ import type {
   ChatConfirmResponse,
   ChatEvent,
   ChatRequest,
+  CheckinCodeResponse,
+  CheckinRequest,
+  CheckinResponse,
   ClaimItemResponse,
   ComplaintConfirmResponse,
   ComplaintDraftResponse,
   ComplaintRequest,
+  CreateDealRequest,
+  CreateDealResponse,
+  CreateEventRequest,
+  CreateEventResponse,
   CreateItemFields,
   CreateItemResponse,
   DealSearchParams,
   DealSearchResponse,
+  DealVoteResponse,
+  DigestNowRequest,
+  DigestNowResponse,
+  EventDetailResponse,
   EventSearchParams,
   EventSearchResponse,
   FeedResponse,
   FlyerScanRequest,
   FlyerScanResponse,
+  FlyerUploadResponse,
   ItemSearchParams,
   ItemSearchResponse,
   MyComplaintsResponse,
+  MyEventsResponse,
   RewardsProgressResponse,
   SaveEventRequest,
   SaveEventResponse,
@@ -48,7 +61,13 @@ export interface ApiOptions {
 
 /** Thrown for any non-2xx response. `code` comes from the API's {error: {code, message}}. */
 export class ApiRequestError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+    /** Any extra fields in the error body, e.g. duplicate_of on a 409 from POST /events */
+    public details: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "ApiRequestError";
   }
@@ -82,14 +101,16 @@ export function createApi(opts: ApiOptions) {
     if (res.ok) return res;
     let code = `http_${res.status}`;
     let message = res.statusText;
+    let details: Record<string, unknown> = {};
     try {
       const body = await res.json();
       code = body?.error?.code ?? code;
       message = body?.error?.message ?? message;
+      details = body?.error ?? {};
     } catch {
       /* not JSON */
     }
-    throw new ApiRequestError(res.status, code, message);
+    throw new ApiRequestError(res.status, code, message, details);
   }
 
   async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
@@ -159,20 +180,33 @@ export function createApi(opts: ApiOptions) {
 
     // P3 Events, Deals, Rewards, Feed
     flyers: {
+      upload: (photo: UploadFile) => multipart<FlyerUploadResponse>("/api/flyers/upload", {}, { photo }),
       scan: (req: FlyerScanRequest) => request<FlyerScanResponse>("POST", "/api/flyers/scan", req),
     },
     events: {
       search: (params: EventSearchParams = {}) => request<EventSearchResponse>("GET", "/api/events/search", undefined, { ...params }),
+      get: (id: string) => request<EventDetailResponse>("GET", `/api/events/${id}`),
+      create: (req: CreateEventRequest) => request<CreateEventResponse>("POST", "/api/events", req),
       save: (id: string, req: SaveEventRequest = {}) => request<SaveEventResponse>("POST", `/api/events/${id}/save`, req),
+      unsave: (id: string) => request<{ saved: false }>("DELETE", `/api/events/${id}/save`),
+      checkin: (id: string, req: CheckinRequest = {}) => request<CheckinResponse>("POST", `/api/events/${id}/checkin`, req),
+      checkinCode: (id: string) => request<CheckinCodeResponse>("GET", `/api/events/${id}/checkin-code`),
+      mine: () => request<MyEventsResponse>("GET", "/api/me/events"),
       icsUrl: (id: string) => url(`/api/events/${id}/ics`),
     },
     deals: {
       search: (params: DealSearchParams = {}) => request<DealSearchResponse>("GET", "/api/deals/search", undefined, { ...params }),
+      create: (req: CreateDealRequest) => request<CreateDealResponse>("POST", "/api/deals", req),
+      vote: (id: string, stillActive: boolean) => request<DealVoteResponse>("POST", `/api/deals/${id}/vote`, { still_active: stillActive }),
     },
     rewards: {
       progress: () => request<RewardsProgressResponse>("GET", "/api/rewards/progress"),
     },
     feed: () => request<FeedResponse>("GET", "/api/feed"),
+    notify: {
+      digestNow: (req: DigestNowRequest = {}) => request<DigestNowResponse>("POST", "/api/notify/digest-now", req),
+      digestPreviewUrl: () => url("/api/notify/digest/preview"),
+    },
 
     // P4 Complaints & Admin
     complaints: {
