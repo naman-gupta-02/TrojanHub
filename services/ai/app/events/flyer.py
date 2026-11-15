@@ -78,6 +78,29 @@ def _is_public_host(url: str) -> bool:
         return False
 
 
+MAX_SIDE = 1600  # still sharp enough for small print, and a phone photo reads much faster
+
+
+def _shrink(image_url: str, data: str) -> str:
+    """Phone photos (12 MP, sometimes rotated by EXIF) -> upright JPEG, max side MAX_SIDE.
+    Anything Pillow can't open is sent as it came."""
+    try:
+        import io
+
+        from PIL import Image, ImageOps
+
+        img = Image.open(io.BytesIO(base64.b64decode(data)))
+        if max(img.size) <= MAX_SIDE and img.format in ("JPEG", "PNG", "WEBP"):
+            return image_url
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        img.thumbnail((MAX_SIDE, MAX_SIDE))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:  # noqa: BLE001 - not an image Pillow knows: let the model try it as is
+        return image_url
+
+
 def _image_payload(image_url: str) -> str:
     """Send the image itself (data URL), so local proxies and private buckets work too."""
     if image_url.startswith("data:image/"):
@@ -86,7 +109,7 @@ def _image_payload(image_url: str) -> str:
             raise HTTPException(422, detail={"code": "bad_image_url", "message": "That photo couldn't be read. Try another one."})
         if len(data) * 3 // 4 > MAX_IMAGE_BYTES:
             raise HTTPException(413, detail={"code": "image_too_large", "message": "Flyer photo must be under 8 MB"})
-        return image_url
+        return _shrink(image_url, data)
     if not image_url.startswith(("http://", "https://")):
         raise HTTPException(422, detail={"code": "bad_image_url", "message": "image_url must be http(s) or a data:image URL"})
     blocked = HTTPException(422, detail={"code": "bad_image_url", "message": "That image link can't be used. Upload the photo instead."})

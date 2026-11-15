@@ -193,6 +193,17 @@ export default function ScanScreen() {
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
           {stage === 'pick' && (
             <>
+              {error && (
+                // shown on top, with the photo, so a failed scan doesn't look like nothing happened
+                <View style={[s.errorBox, { flexDirection: 'row', alignItems: 'center', gap: spacing.md }]} accessibilityRole="alert">
+                  {preview && <Image source={{ uri: preview }} style={{ width: 64, height: 64, borderRadius: radius.md }} accessibilityLabel="Your flyer" />}
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ fontWeight: '800', color: colors.danger }}>Couldn't read that flyer</Text>
+                    <Text style={{ color: colors.ink }}>{error}</Text>
+                    <Text style={s.cardMeta}>Try a straight-on photo, or enter the details yourself.</Text>
+                  </View>
+                </View>
+              )}
               <View style={{ alignItems: 'center', gap: spacing.sm, padding: spacing.xl, borderRadius: radius.lg, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.line, backgroundColor: colors.surface }}>
                 <Text style={{ fontSize: 48 }}>📸</Text>
                 <Text style={s.cardTitle}>Saw a flyer? Post it in 10 seconds.</Text>
@@ -338,11 +349,6 @@ export default function ScanScreen() {
               <Button title={kind === 'event' ? 'Post event' : 'Post deal'} onPress={() => submit()} busy={saving} disabled={ended} />
               <Button title="Cancel" kind="secondary" onPress={() => router.back()} />
             </>
-          )}
-          {stage === 'pick' && error && (
-            <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-              {error}
-            </Text>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
