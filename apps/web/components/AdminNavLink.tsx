@@ -37,7 +37,7 @@ export function AdminNavLink() {
 
   if (!show) return null;
   return (
-    <Link href="/admin" className="text-sm hover:underline">
+    <Link href="/admin" className="nav-link">
       Admin
     </Link>
   );

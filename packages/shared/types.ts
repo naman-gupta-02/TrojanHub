@@ -398,6 +398,8 @@ export interface CreateDealRequest {
   link?: string | null;
   starts_at?: ISODate | null;
   expires_at?: ISODate | null;
+  /** true = "post anyway" after a 409 duplicate warning */
+  force?: boolean;
 }
 
 export interface CreateDealResponse {
@@ -405,11 +407,14 @@ export interface CreateDealResponse {
 }
 
 export interface DealVoteRequest {
-  still_active: boolean;
+  /** true = still works, false = doesn't work anymore, null = take my vote back */
+  still_active: boolean | null;
 }
 
 export interface DealVoteResponse {
   still_active_votes: number;
+  /** this student's vote after the change (null = no vote) */
+  my_vote?: boolean | null;
 }
 
 /** POST /events/{id}/checkin: with the organizer's QR code, or "I'm here" while the event is on */

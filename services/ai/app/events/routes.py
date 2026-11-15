@@ -64,7 +64,7 @@ class CheckinRequest(BaseModel):
 
 
 class DealVoteRequest(BaseModel):
-    still_active: bool = True
+    still_active: bool | None = True  # None = take my vote back
 
 
 def _https(v: str | None) -> str | None:
@@ -114,6 +114,7 @@ class DealCreate(BaseModel):
     link: str | None = None
     starts_at: datetime | None = None
     expires_at: datetime | None = None
+    force: bool = False  # true = "post anyway" after a duplicate warning
 
     @field_validator("link")
     @classmethod
@@ -435,6 +436,14 @@ def create_deal(req: DealCreate, user_id: str = Depends(require_signed_in)) -> d
                                          "message": "This deal already expired. Only current deals can be posted."})
     if not db_live():
         return {"deal": load_mock("deals_search")["deals"][0]}
+    if not req.force:
+        dup = dedupe.find_duplicate_deal(req.title)
+        if dup:
+            raise HTTPException(409, detail={
+                "code": "duplicate",
+                "message": f"Looks like \"{dup['title']}\" is already posted",
+                "duplicate_of": dup["id"],
+            })
     row = {
         "title": req.title.strip(),
         "description": req.description,
@@ -455,17 +464,18 @@ _votes: dict[tuple[str, str], bool] = {}
 @router.post("/deals/{deal_id}/vote")
 def vote_deal(deal_id: str, req: DealVoteRequest, user_id: str = Depends(require_signed_in)) -> dict:
     if not db_live():
-        return {"still_active_votes": 4}
+        return {"still_active_votes": 4, "my_vote": req.still_active}
     deal = store.get_deal(deal_id)
     if not deal:
         raise _not_found("Deal")
     votes = deal["still_active_votes"]
-    previous = _votes.get((user_id, deal_id))
+    previous = _votes.pop((user_id, deal_id), None)
     if previous is not None:
         votes -= 1 if previous else -1  # undo the old vote
-    votes += 1 if req.still_active else -1
-    _votes[(user_id, deal_id)] = req.still_active
-    return {"still_active_votes": store.set_deal_votes(deal_id, max(votes, 0))}
+    if req.still_active is not None:  # None = just take the vote back ("unlike")
+        votes += 1 if req.still_active else -1
+        _votes[(user_id, deal_id)] = req.still_active
+    return {"still_active_votes": store.set_deal_votes(deal_id, max(votes, 0)), "my_vote": req.still_active}
 
 
 # ---------------------------------------------------------------------------

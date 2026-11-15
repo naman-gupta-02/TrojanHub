@@ -96,3 +96,17 @@ def find_duplicate(
         if (strong or loose) and score > best_score:
             best, best_score = event, score
     return best
+
+
+def find_duplicate_deal(title: str | None, candidates: list[dict] | None = None) -> dict | None:
+    """An active deal with (almost) the same title, e.g. the same flyer posted twice."""
+    if not title:
+        return None
+    if candidates is None:
+        candidates = store.search_deals(active=True)
+    best, best_score = None, 0.0
+    for deal in candidates:
+        score = title_similarity(title, deal["title"])
+        if score >= TITLE_MATCH and score > best_score:
+            best, best_score = deal, score
+    return best

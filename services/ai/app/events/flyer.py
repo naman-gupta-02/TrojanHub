@@ -315,9 +315,12 @@ def scan(image_url: str) -> dict:
         raise HTTPException(422, detail={"code": "not_a_flyer", "message": "That doesn't look like a flyer. Try a clearer, straight-on photo."})
     result = normalize(raw, buildings)
     f = result["fields"]
-    if result["type"] == "event" and not result["ended"]:
-        dup = dedupe.find_duplicate(f["title"], f["starts_at"], f["location_text"])
+    if not result["ended"]:
+        if result["type"] == "event":
+            dup = dedupe.find_duplicate(f["title"], f["starts_at"], f["location_text"])
+        else:
+            dup = dedupe.find_duplicate_deal(f["title"])
         if dup:
             result["duplicate_of"] = dup["id"]
-            result["duplicate"] = {"id": dup["id"], "title": dup["title"], "starts_at": dup["starts_at"]}
+            result["duplicate"] = {"id": dup["id"], "title": dup["title"], "starts_at": dup.get("starts_at")}
     return result

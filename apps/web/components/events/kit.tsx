@@ -240,13 +240,15 @@ export function DealCard({ deal, reason, onVoted }: { deal: Deal; reason?: strin
   const endsSoon = deal.expires_at && new Date(deal.expires_at).getTime() - openedAt < 12 * 3_600_000;
 
   async function vote(stillActive: boolean) {
-    setVoted(stillActive);
+    const before = voted;
+    const next = voted === stillActive ? null : stillActive; // tap the same thumb again to take it back
+    setVoted(next);
     try {
-      const res = await api.deals.vote(deal.id, stillActive);
+      const res = await api.deals.vote(deal.id, next);
       setVotes(res.still_active_votes);
       onVoted?.(res.still_active_votes);
     } catch {
-      setVoted(null);
+      setVoted(before);
     }
   }
 

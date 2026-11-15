@@ -50,6 +50,8 @@ function RootLayoutNav() {
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="auth/login" options={{ title: 'Account', presentation: 'modal' }} />
+        {/* P1: Tommy opens over any tab from the floating "Chat with Tommy" button */}
+        <Stack.Screen name="tommy" options={{ title: 'Chat with Tommy', presentation: 'modal', headerTitleStyle: { fontWeight: '800' } }} />
       </Stack>
     </ThemeProvider>
   );

@@ -235,11 +235,13 @@ export function DealCard({ deal, reason }: { deal: Deal; reason?: string }) {
   const [voted, setVoted] = useState<boolean | null>(null);
 
   async function vote(stillActive: boolean) {
-    setVoted(stillActive);
+    const before = voted;
+    const next = voted === stillActive ? null : stillActive; // tap the same thumb again to take it back
+    setVoted(next);
     try {
-      setVotes((await api.deals.vote(deal.id, stillActive)).still_active_votes);
+      setVotes((await api.deals.vote(deal.id, next)).still_active_votes);
     } catch {
-      setVoted(null);
+      setVoted(before);
     }
   }
 

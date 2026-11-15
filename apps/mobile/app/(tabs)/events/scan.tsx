@@ -157,6 +157,7 @@ export default function ScanScreen() {
           link: form.register_url || null,
           starts_at: starts,
           expires_at: ends,
+          force,
         });
         router.replace('/events?tab=deals');
       }
@@ -251,9 +252,13 @@ export default function ScanScreen() {
                 <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.gold, backgroundColor: '#FFF8DB', padding: spacing.md, gap: spacing.sm }} accessibilityRole="alert">
                   <Text style={s.cardTitle}>👀 This might already be posted</Text>
                   <Text style={{ color: colors.ink }}>
-                    We found <Text style={{ fontWeight: '700' }}>{duplicate.title}</Text>. Posting it twice splits the RSVPs.
+                    We found <Text style={{ fontWeight: '700' }}>{duplicate.title}</Text>. {kind === 'event' ? 'Posting it twice splits the RSVPs.' : 'Posting it twice clutters the Deals list.'}
                   </Text>
-                  <Button title="View existing event" onPress={() => router.replace({ pathname: '/events/[id]', params: { id: duplicate.id } })} />
+                  {kind === 'event' ? (
+                    <Button title="View existing event" onPress={() => router.replace({ pathname: '/events/[id]', params: { id: duplicate.id } })} />
+                  ) : (
+                    <Button title="See it on Deals" onPress={() => router.replace('/events?tab=deals')} />
+                  )}
                   <Button title="It's different, post anyway" kind="secondary" onPress={() => submit(true)} busy={saving} />
                 </View>
               )}
