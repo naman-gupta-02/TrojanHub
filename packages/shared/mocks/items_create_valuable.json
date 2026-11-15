@@ -8,7 +8,7 @@
     "photo_url": null,
     "building_id": "b0000000-0000-0000-0000-000000000009",
     "location_text": "Ronald Tutor Campus Center food court",
-    "dropoff_point_id": null,
+    "dropoff_point_id": "dd000000-0000-0000-0000-000000000001",
     "status": "open",
     "posted_by": "00000000-0000-0000-0000-000000000002",
     "expires_at": null,
@@ -16,9 +16,9 @@
   },
   "tier": "valuable",
   "dropoff": {
-    "name": "DPS Lost & Found",
+    "name": "DPS Lost & Found, 3667 McClintock Ave (University Park Campus)",
     "url": "https://dps.usc.edu/services/lost-and-found/",
-    "map": "https://www.google.com/maps/search/?api=1&query=USC+Department+of+Public+Safety",
+    "map": "https://www.google.com/maps/search/?api=1&query=3667+McClintock+Ave%2C+Los+Angeles%2C+CA+90089",
     "hours": null
   }
 }
