@@ -6,6 +6,7 @@ import { ApiRequestError } from "@trojanhub/shared/api";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { TommyAvatar } from "@/components/tommy/TommyAvatar";
 import { api } from "@/lib/api";
 
 import { EditItem } from "../_components/EditItem";
@@ -21,8 +22,11 @@ export default function ReportFoundPage() {
   const lastAi = useRef<string | null>(null);
   const typed = useRef(""); // what's in the box right now, for the async describe below
   const describeRun = useRef(0); // ignore an answer for a photo that was already replaced
+  const pendingDescribe = useRef<Promise<void> | null>(null); // "Post it" waits for this
   const [where, setWhere] = useState("");
   const [busy, setBusy] = useState(false);
+  const [waiting, setWaiting] = useState(false); // posting, but Tommy is still writing the description
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [posted, setPosted] = useState<CreateItemResponse | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -46,6 +50,7 @@ export default function ReportFoundPage() {
       typed.current = "";
       setAiWrote(false);
       lastAi.current = null;
+      pendingDescribe.current = null;
       // a counter, not a DOM ref: bumping it makes a describe that's still running drop its answer
       // eslint-disable-next-line react-hooks/exhaustive-deps
       describeRun.current++;
@@ -56,6 +61,7 @@ export default function ReportFoundPage() {
 
   async function pickPhoto(file: File | undefined) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) return setError("That's not a photo. Try a JPG or PNG.");
     setError(null);
     try {
       const blob = await shrinkPhoto(file);
@@ -69,35 +75,46 @@ export default function ReportFoundPage() {
 
   /** Tommy writes "What is it?" from the photo. It never overwrites what the finder typed;
    *  if it fails, the box just stays as it was. */
-  async function autoDescribe(blob: Blob, force = false) {
+  function autoDescribe(blob: Blob, force = false): Promise<void> {
     const run = ++describeRun.current;
     setDescribing(true);
-    try {
-      const res = await api.items.describe(blob);
-      if (run !== describeRun.current || !res.description) return;
-      const cur = typed.current;
-      if (!force && cur.trim() && cur !== lastAi.current) return; // the finder already wrote their own
-      lastAi.current = typed.current = res.description;
-      setDescription(res.description);
-      setAiWrote(true);
-    } catch {
-      // optional helper: the finder can still type it
-    } finally {
-      if (run === describeRun.current) setDescribing(false);
-    }
+    const job = (async () => {
+      try {
+        const res = await api.items.describe(blob);
+        if (run !== describeRun.current || !res.description) return;
+        const cur = typed.current;
+        if (!force && cur.trim() && cur !== lastAi.current) return; // the finder already wrote their own
+        lastAi.current = typed.current = res.description;
+        setDescription(res.description);
+        setAiWrote(true);
+      } catch {
+        // optional helper: the finder can still type it
+      } finally {
+        if (run === describeRun.current) {
+          setDescribing(false);
+          pendingDescribe.current = null;
+        }
+      }
+    })();
+    pendingDescribe.current = job;
+    return job;
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!photo && !description.trim()) return setError("Add a photo or a short description of the item.");
     if (!where.trim()) return setError("Where did you find it? For example: Leavey Library, 2nd floor.");
-    setBusy(true);
     setError(null);
+    // Pressed "Post it" before Tommy finished? Wait for the description instead of posting without one.
+    if (!typed.current.trim() && pendingDescribe.current) {
+      setWaiting(true);
+      await pendingDescribe.current;
+      setWaiting(false);
+    }
+    const text = typed.current.trim();
+    if (!photo && !text) return setError("Add a photo or a short description of the item.");
+    setBusy(true);
     try {
-      const res = await api.items.create(
-        { kind: "found", description: description.trim() || undefined, location_text: where.trim() },
-        photo?.blob,
-      );
+      const res = await api.items.create({ kind: "found", description: text || undefined, location_text: where.trim() }, photo?.blob);
       setPosted(res);
     } catch (e) {
       setError(e instanceof ApiRequestError ? e.message : "Couldn't post right now. Is the AI service running?");
@@ -110,7 +127,7 @@ export default function ReportFoundPage() {
     return (
       <section className="max-w-2xl space-y-4">
         <BackLink href="/lost-found" label="Lost & Found" />
-        <h1 className="text-3xl font-bold">I found something</h1>
+        <h1 className="text-3xl font-black">I found something</h1>
         <SignInNotice what="post a found item" />
       </section>
     );
@@ -118,41 +135,75 @@ export default function ReportFoundPage() {
 
   if (posted) return <Posted initial={posted} photoGiven={!!photo} />;
 
+  const input = "lf-input w-full rounded-xl border-2 border-line bg-surface px-4";
   return (
     <section className="max-w-2xl space-y-5">
       <BackLink href="/lost-found" label="Lost & Found" />
-      <div>
-        <h1 className="text-3xl font-bold">I found something</h1>
-        <p className="text-muted">Snap a photo and say where you found it. Our AI sorts it for you.</p>
+      <div className="lf-hero relative overflow-hidden rounded-3xl p-6 text-white shadow-lg">
+        <span aria-hidden className="pointer-events-none absolute -right-4 -top-6 select-none text-[7.5rem] leading-none opacity-10">
+          📸
+        </span>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold">Lost &amp; Found</p>
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">I found something</h1>
+        <p className="mt-1 text-white/85">Snap a photo and say where you found it. Tommy writes the description and sorts it for you.</p>
       </div>
 
-      <form onSubmit={submit} className="space-y-4">
-        <div className="space-y-2">
-          <span className="block font-semibold">Photo</span>
+      <form onSubmit={submit} className="space-y-6 rounded-3xl border border-line bg-surface p-5 shadow-sm sm:p-6">
+        <Step n={1} title="Photo" hint="Don't include faces or ID card details">
           {photo ? (
-            <div className="flex items-end gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photo.preview} alt="Your photo of the item" className="h-40 w-40 rounded-lg border border-line object-cover" />
-              <button type="button" onClick={() => fileInput.current?.click()} className="min-h-11 rounded-md border border-line bg-surface px-4 font-semibold hover:bg-background">
-                Change photo
-              </button>
+            <div className="space-y-2">
+              <div className={`relative overflow-hidden rounded-2xl border-2 shadow-md ${describing ? "lf-scan border-gold" : "border-line"}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.preview} alt="Your photo of the item" className="max-h-80 w-full bg-background object-contain" />
+                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/60 to-transparent p-3 pt-10">
+                  {describing ? (
+                    <span className="fade-up inline-flex items-center gap-2 rounded-full bg-white/95 py-1 pl-1 pr-3 text-sm font-bold text-ink shadow">
+                      <TommyAvatar mood="searching" size={28} /> Tommy is looking…
+                    </span>
+                  ) : aiWrote ? (
+                    <span className="tommy-pop inline-flex items-center gap-2 rounded-full bg-gold py-1 pl-1 pr-3 text-sm font-bold text-ink shadow">
+                      <TommyAvatar mood="celebrating" size={28} /> Described by Tommy
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => fileInput.current?.click()}
+                    className="min-h-10 rounded-full bg-white/95 px-4 text-sm font-bold text-ink shadow transition hover:bg-white"
+                  >
+                    🔄 Change photo
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <button
               type="button"
               onClick={() => fileInput.current?.click()}
-              className="flex h-40 w-full flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-line bg-surface font-semibold hover:border-cardinal"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                pickPhoto(e.dataTransfer.files?.[0]);
+              }}
+              className={`lf-drop group flex h-52 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gold bg-surface ${dragOver ? "is-over" : ""}`}
             >
-              Take or choose a photo
-              <span className="text-sm font-normal text-muted">Don&apos;t include faces or ID card details</span>
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-cardinal text-2xl text-white shadow-md transition group-hover:scale-110">
+                📷
+              </span>
+              <span className="text-lg font-bold">Take or choose a photo</span>
+              <span className="text-sm text-muted">or drag it here · Tommy will describe it for you</span>
             </button>
           )}
           <input ref={fileInput} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Photo of the item" onChange={(e) => pickPhoto(e.target.files?.[0])} />
-        </div>
+        </Step>
 
-        <div className="space-y-1">
-          <label htmlFor="item-description" className="font-semibold">What is it?</label>{" "}
-          <span className="text-sm text-muted">{photo ? "(Tommy writes this from your photo)" : "(optional with a photo)"}</span>
+        <Step n={2} title="What is it?" hint={photo ? "Tommy writes this from your photo. Check it." : "optional with a photo"} htmlFor="item-description">
           <textarea
             id="item-description"
             value={description}
@@ -163,40 +214,65 @@ export default function ReportFoundPage() {
             rows={3}
             placeholder={describing ? "Tommy is looking at your photo…" : "e.g. black Hydro Flask with a Trojans sticker"}
             aria-busy={describing}
-            className={`w-full rounded-md border border-line bg-surface px-3 py-2 ${describing ? "animate-pulse" : ""}`}
+            className={`${input} py-3 ${describing && !description ? "animate-pulse bg-gold/5" : ""}`}
           />
           {describing ? (
-            <p className="text-sm text-muted" role="status">✨ Tommy is describing your photo…</p>
+            <p className="flex items-center gap-2 text-sm font-semibold text-warning" role="status">
+              <span className="inline-block h-2 w-2 animate-ping rounded-full bg-gold" aria-hidden /> Tommy is describing your photo…
+            </p>
           ) : aiWrote && photo && description.trim() ? (
             <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted" role="status">
-              <span>✨ Written by Tommy. Check it and fix anything that&apos;s wrong.</span>
-              <button type="button" onClick={() => autoDescribe(photo.blob, true)} className="font-semibold text-cardinal underline">
-                Rewrite
+              <span>✨ Written by Tommy. Fix anything that&apos;s wrong.</span>
+              <button type="button" onClick={() => autoDescribe(photo.blob, true)} className="font-bold text-cardinal hover:underline">
+                ↻ Rewrite
               </button>
             </p>
           ) : null}
-        </div>
+        </Step>
 
-        <label className="block space-y-1">
-          <span className="font-semibold">Where did you find it?</span>{" "}
-          <span className="text-sm text-muted">(be specific: if you leave it there, owners will go to this spot)</span>
+        <Step n={3} title="Where did you find it?" hint="Be specific: if you leave it there, owners will go to this spot" htmlFor="item-where">
           <input
+            id="item-where"
             value={where}
             onChange={(e) => setWhere(e.target.value)}
             required
             placeholder="e.g. Leavey Library, 2nd floor"
-            className="min-h-11 w-full rounded-md border border-line bg-surface px-3"
+            className={`${input} min-h-12`}
           />
-        </label>
+        </Step>
 
         {error && <ErrorNote message={error} />}
 
-        <button disabled={busy} className="min-h-11 w-full rounded-md bg-cardinal font-semibold text-white hover:bg-cardinal-dark disabled:opacity-60">
-          {busy ? "Looking at your photo…" : "Post it"}
+        <button
+          disabled={busy || waiting}
+          className="min-h-12 w-full rounded-full bg-cardinal text-lg font-bold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-cardinal-dark hover:shadow-lg disabled:translate-y-0 disabled:opacity-70"
+        >
+          {waiting ? "✨ Tommy is finishing the description…" : busy ? "Posting…" : "Post it"}
         </button>
-        <p className="text-xs text-muted">Your name, email and phone number are never shown.</p>
+        <p className="text-center text-xs text-muted">🔒 Your name, email and phone number are never shown.</p>
       </form>
     </section>
+  );
+}
+
+/** One numbered step of the form: gold number, bold title, short hint. */
+function Step({ n, title, hint, htmlFor, children }: { n: number; title: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+  const Title = htmlFor ? "label" : "span";
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-3">
+        <span className="flex h-7 w-7 shrink-0 translate-y-1 items-center justify-center rounded-full bg-gold text-sm font-black text-ink shadow-sm" aria-hidden>
+          {n}
+        </span>
+        <div>
+          <Title htmlFor={htmlFor} className="text-lg font-bold">
+            {title}
+          </Title>
+          {hint && <p className="text-sm text-muted">{hint}</p>}
+        </div>
+      </div>
+      <div className="sm:pl-10">{children}</div>
+    </div>
   );
 }
 

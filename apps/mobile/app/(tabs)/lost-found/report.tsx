@@ -5,11 +5,12 @@ import { ApiRequestError } from '@trojanhub/shared/api';
 import { colors, radius, spacing } from '@trojanhub/shared/theme';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { DPS_DROPOFF, type PickedPhoto, currentUserId, describePhoto, getBuildings, isMock, pickPhoto, postFoundItem, setTier } from '@/components/lost-found/data';
 import { EditItem } from '@/components/lost-found/EditItem';
-import { Button, DropoffCard, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice, s } from '@/components/lost-found/ui';
+import { TommyAvatar } from '@/components/tommy/TommyAvatar';
+import { Button, DropoffCard, Hero, ErrorNote, ItemPhoto, LeftHereCard, SignInNotice, TierBadge, WhereNowChoice, s } from '@/components/lost-found/ui';
 
 export default function ReportFoundScreen() {
   const [signedIn, setSignedIn] = useState<boolean | null>(isMock ? true : null);
@@ -20,6 +21,8 @@ export default function ReportFoundScreen() {
   const lastAi = useRef<string | null>(null);
   const typed = useRef(''); // what's in the box right now, for the async describe below
   const describeRun = useRef(0); // ignore an answer for a photo that was already replaced
+  const pendingDescribe = useRef<Promise<void> | null>(null); // "Post it" waits for this
+  const [waiting, setWaiting] = useState(false); // posting, but Tommy is still writing the description
   const [where, setWhere] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,31 +47,45 @@ export default function ReportFoundScreen() {
 
   /** Tommy writes "What is it?" from the photo. It never overwrites what the finder typed;
    *  if it fails, the box just stays as it was. */
-  async function autoDescribe(p: PickedPhoto, force = false) {
+  function autoDescribe(p: PickedPhoto, force = false): Promise<void> {
     const run = ++describeRun.current;
     setDescribing(true);
-    try {
-      const res = await describePhoto(p.file);
-      if (run !== describeRun.current || !res.description) return;
-      const cur = typed.current;
-      if (!force && cur.trim() && cur !== lastAi.current) return; // the finder already wrote their own
-      lastAi.current = typed.current = res.description;
-      setDescription(res.description);
-      setAiWrote(true);
-    } catch {
-      // optional helper: the finder can still type it
-    } finally {
-      if (run === describeRun.current) setDescribing(false);
-    }
+    const job = (async () => {
+      try {
+        const res = await describePhoto(p.file);
+        if (run !== describeRun.current || !res.description) return;
+        const cur = typed.current;
+        if (!force && cur.trim() && cur !== lastAi.current) return; // the finder already wrote their own
+        lastAi.current = typed.current = res.description;
+        setDescription(res.description);
+        setAiWrote(true);
+      } catch {
+        // optional helper: the finder can still type it
+      } finally {
+        if (run === describeRun.current) {
+          setDescribing(false);
+          pendingDescribe.current = null;
+        }
+      }
+    })();
+    pendingDescribe.current = job;
+    return job;
   }
 
   async function submit() {
-    if (!photo && !description.trim()) return setError('Add a photo or a short description of the item.');
     if (!where.trim()) return setError('Where did you find it? For example: Leavey Library, 2nd floor.');
-    setBusy(true);
     setError(null);
+    // Pressed "Post it" before Tommy finished? Wait for the description instead of posting without one.
+    if (!typed.current.trim() && pendingDescribe.current) {
+      setWaiting(true);
+      await pendingDescribe.current;
+      setWaiting(false);
+    }
+    const text = typed.current.trim();
+    if (!photo && !text) return setError('Add a photo or a short description of the item.');
+    setBusy(true);
     try {
-      setPosted(await postFoundItem({ description: description.trim() || undefined, location_text: where.trim() }, photo?.file));
+      setPosted(await postFoundItem({ description: text || undefined, location_text: where.trim() }, photo?.file));
     } catch (e) {
       setError(e instanceof ApiRequestError ? e.message : "Couldn't post right now. Is the AI service running?");
     } finally {
@@ -88,28 +105,43 @@ export default function ReportFoundScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={s.screen} keyboardShouldPersistTaps="handled">
-        <Text style={s.muted}>Snap a photo and say where you found it. Our AI sorts it for you.</Text>
+        <Hero eyebrow="Found something?" title="Snap it, post it" subtitle="Snap a photo and say where you found it. Tommy writes the description and sorts it for you." />
 
+        <Step n={1} title="Photo" hint="Don’t include faces or ID card details" />
         {photo ? (
-          <Image source={{ uri: photo.uri }} style={{ width: '100%', aspectRatio: 1, borderRadius: radius.md }} accessibilityLabel="Your photo of the item" />
-        ) : (
-          <View style={[s.card, { alignItems: 'center', paddingVertical: spacing.xl }]}>
-            <Text style={s.title}>Add a photo</Text>
-            <Text style={s.small}>Don’t include faces or ID card details</Text>
+          <View style={[st.photoWrap, describing && { borderColor: colors.gold }]}>
+            <Image source={{ uri: photo.uri }} style={{ width: '100%', aspectRatio: 1 }} resizeMode="cover" accessibilityLabel="Your photo of the item" />
+            {describing ? (
+              <View style={[st.chip, { backgroundColor: '#fff' }]} accessibilityLiveRegion="polite">
+                <TommyAvatar mood="searching" size={26} />
+                <Text style={st.chipText}>Tommy is looking…</Text>
+              </View>
+            ) : aiWrote ? (
+              <View style={[st.chip, { backgroundColor: colors.gold }]}>
+                <TommyAvatar mood="celebrating" size={26} />
+                <Text style={st.chipText}>Described by Tommy</Text>
+              </View>
+            ) : null}
           </View>
+        ) : (
+          <Pressable onPress={() => choose('library')} accessibilityRole="button" accessibilityLabel="Choose a photo" style={({ pressed }) => [st.drop, pressed && { borderColor: colors.cardinal, transform: [{ scale: 0.99 }] }]}>
+            <View style={st.dropIcon}>
+              <Text style={{ fontSize: 26 }}>📷</Text>
+            </View>
+            <Text style={s.title}>Add a photo</Text>
+            <Text style={s.small}>Tommy will describe it for you</Text>
+          </Pressable>
         )}
         <View style={{ flexDirection: 'row', gap: spacing.sm }}>
           <View style={{ flex: 1 }}>
-            <Button label={photo ? 'Retake' : 'Take photo'} kind="secondary" onPress={() => choose('camera')} />
+            <Button label={photo ? '📸 Retake' : '📸 Take photo'} kind="secondary" onPress={() => choose('camera')} />
           </View>
           <View style={{ flex: 1 }}>
-            <Button label="Choose photo" kind="secondary" onPress={() => choose('library')} />
+            <Button label={photo ? '🔄 Change' : '🖼️ Choose'} kind="secondary" onPress={() => choose('library')} />
           </View>
         </View>
 
-        <Text style={s.title}>
-          What is it? <Text style={s.small}>{photo ? '(Tommy writes this from your photo)' : '(optional with a photo)'}</Text>
-        </Text>
+        <Step n={2} title="What is it?" hint={photo ? 'Tommy writes this from your photo. Check it.' : 'Optional with a photo'} />
         <TextInput
           value={description}
           onChangeText={(v) => {
@@ -120,21 +152,20 @@ export default function ReportFoundScreen() {
           placeholder={describing ? 'Tommy is looking at your photo…' : 'e.g. black Hydro Flask with a Trojans sticker'}
           placeholderTextColor={colors.muted}
           accessibilityLabel="What is it?"
-          style={[s.input, { minHeight: 76, paddingTop: spacing.sm, textAlignVertical: 'top', opacity: describing ? 0.6 : 1 }]}
+          style={[s.input, { minHeight: 84, paddingTop: spacing.sm, textAlignVertical: 'top' }, describing && !description && { borderColor: colors.gold, backgroundColor: '#FFFBEA' }]}
         />
         {describing ? (
-          <Text style={s.small} accessibilityLiveRegion="polite">✨ Tommy is describing your photo…</Text>
+          <Text style={[s.small, { color: '#8A5A00', fontWeight: '700' }]} accessibilityLiveRegion="polite">✨ Tommy is describing your photo…</Text>
         ) : aiWrote && photo && description.trim() ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.sm }}>
-            <Text style={s.small}>✨ Written by Tommy. Check it and fix anything that’s wrong.</Text>
+            <Text style={s.small}>✨ Written by Tommy. Fix anything that’s wrong.</Text>
             <Pressable onPress={() => autoDescribe(photo, true)} accessibilityRole="button" hitSlop={10}>
-              <Text style={[s.small, { color: colors.cardinal, fontWeight: '700', textDecorationLine: 'underline' }]}>Rewrite</Text>
+              <Text style={[s.small, { color: colors.cardinal, fontWeight: '800' }]}>↻ Rewrite</Text>
             </Pressable>
           </View>
         ) : null}
-        <Text style={s.title}>
-          Where did you find it? <Text style={s.small}>(be specific: if you leave it there, owners will go to this spot)</Text>
-        </Text>
+
+        <Step n={3} title="Where did you find it?" hint="Be specific: if you leave it there, owners will go to this spot" />
         <TextInput
           value={where}
           onChangeText={setWhere}
@@ -145,8 +176,8 @@ export default function ReportFoundScreen() {
         />
 
         {error && <ErrorNote message={error} />}
-        <Button label={busy ? 'Looking at your photo…' : 'Post it'} onPress={submit} busy={busy} />
-        <Text style={s.small}>Your name, email and phone number are never shown.</Text>
+        <Button label={waiting ? '✨ Tommy is finishing the description…' : 'Post it'} onPress={submit} busy={busy} disabled={waiting} />
+        <Text style={[s.small, { textAlign: 'center' }]}>🔒 Your name, email and phone number are never shown.</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -238,3 +269,27 @@ function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiv
     </ScrollView>
   );
 }
+
+/** A numbered step: gold number, bold title, short hint. */
+function Step({ n, title, hint }: { n: number; title: string; hint?: string }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', marginTop: spacing.xs }}>
+      <View style={st.stepNum}>
+        <Text style={{ fontWeight: '900', color: colors.ink }}>{n}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[s.title, { fontSize: 17 }]} accessibilityRole="header">{title}</Text>
+        {hint ? <Text style={s.small}>{hint}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+const st = StyleSheet.create({
+  photoWrap: { borderRadius: radius.lg, overflow: 'hidden', borderWidth: 3, borderColor: colors.line, backgroundColor: colors.surface },
+  chip: { position: 'absolute', left: spacing.sm, bottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.pill, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  chipText: { fontWeight: '800', color: colors.ink, fontSize: 13 },
+  drop: { alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.xl, borderRadius: radius.lg, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.gold, backgroundColor: '#FFFCF0' },
+  dropIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.cardinal, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  stepNum: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+});

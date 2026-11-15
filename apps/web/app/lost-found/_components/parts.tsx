@@ -8,9 +8,13 @@ import { matchLabel, placeMapLink, timeAgo, whereFound } from "../_lib/data";
 /** Where the item is now: "valuable" = taken to DPS, "everyday" = left where it was found. */
 export function TierBadge({ tier }: { tier: ItemTier }) {
   return tier === "valuable" ? (
-    <span className="inline-block rounded-full bg-cardinal px-2.5 py-0.5 text-xs font-semibold text-white">At DPS</span>
+    <span className="inline-flex items-center gap-1 rounded-full bg-cardinal px-2.5 py-0.5 text-xs font-bold text-white shadow-sm ring-1 ring-gold/70">
+      <span aria-hidden>🛡️</span> At DPS
+    </span>
   ) : (
-    <span className="inline-block rounded-full bg-[#3b5b7a] px-2.5 py-0.5 text-xs font-semibold text-white">Left where found</span>
+    <span className="inline-flex items-center gap-1 rounded-full bg-[#3b5b7a] px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
+      <span aria-hidden>📍</span> Left where found
+    </span>
   );
 }
 
@@ -47,15 +51,19 @@ export function ItemCard({ item, buildings, score }: { item: Item; buildings: Re
   return (
     <Link
       href={`/lost-found/${item.id}`}
-      className="group flex w-full flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-sm transition hover:shadow-md focus-visible:outline-2 focus-visible:outline-cardinal"
+      className="lf-card group flex w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm focus-visible:outline-2 focus-visible:outline-cardinal"
     >
-      <ItemPhoto item={item} className="aspect-square w-full" />
-      <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="relative overflow-hidden">
+        <ItemPhoto item={item} className="aspect-square w-full" />
+        <span className="absolute left-2 top-2">
           <TierBadge tier={item.tier} />
-          {score !== undefined && <span className="text-xs font-semibold text-success">{matchLabel(score)}</span>}
-        </div>
-        <h3 className="font-semibold leading-snug group-hover:underline">{item.title}</h3>
+        </span>
+      </div>
+      <div className="flex flex-1 flex-col gap-1.5 border-t-4 border-gold/0 p-3 transition-colors group-hover:border-gold">
+        {score !== undefined && (
+          <span className="w-fit rounded-full bg-success/10 px-2 py-0.5 text-xs font-bold text-success">{matchLabel(score)}</span>
+        )}
+        <h3 className="font-bold leading-snug group-hover:text-cardinal">{item.title}</h3>
         <p className="text-sm text-muted">{whereFound(item, buildings)}</p>
         <p className="mt-auto text-xs text-muted">Found {timeAgo(item.created_at)}</p>
       </div>
@@ -76,7 +84,7 @@ export function WhereNowChoice({ tier, onChange, busy }: { tier: ItemTier; onCha
       {options.map((o) => (
         <label
           key={o.value}
-          className={`flex min-h-11 cursor-pointer gap-3 rounded-lg border-2 bg-surface p-3 ${tier === o.value ? "border-cardinal" : "border-line"}`}
+          className={`flex min-h-11 cursor-pointer gap-3 rounded-xl border-2 p-3 transition ${tier === o.value ? "border-cardinal bg-cardinal/5 shadow-sm" : "border-line bg-surface hover:border-cardinal/40"}`}
         >
           <input type="radio" name={group} value={o.value} checked={tier === o.value} onChange={() => onChange(o.value)} className="mt-1 accent-cardinal" />
           <span>
@@ -91,7 +99,7 @@ export function WhereNowChoice({ tier, onChange, busy }: { tier: ItemTier; onCha
 
 export function DropoffCard({ dropoff, title, children }: { dropoff: DropoffInfo; title: string; children?: React.ReactNode }) {
   return (
-    <div className="space-y-2 rounded-lg border-2 border-cardinal bg-surface p-4">
+    <div className="fade-up space-y-2 rounded-2xl border-2 border-cardinal bg-surface p-4 shadow-sm">
       <p className="font-semibold text-cardinal">{title}</p>
       {children}
       <p className="font-medium">{dropoff.name}</p>
@@ -113,7 +121,7 @@ export function DropoffCard({ dropoff, title, children }: { dropoff: DropoffInfo
 /** For items the finder left where they found them. */
 export function LeftHereCard({ item, buildings, title, children }: { item: Item; buildings: Record<string, Building>; title: string; children?: React.ReactNode }) {
   return (
-    <div className="space-y-2 rounded-lg border-2 border-[#3b5b7a] bg-surface p-4">
+    <div className="fade-up space-y-2 rounded-2xl border-2 border-[#3b5b7a] bg-surface p-4 shadow-sm">
       <p className="font-semibold text-[#3b5b7a]">{title}</p>
       <p className="text-lg font-medium">{whereFound(item, buildings)}</p>
       {children}
@@ -131,7 +139,7 @@ export function LeftHereCard({ item, buildings, title, children }: { item: Item;
 
 export function SignInNotice({ what }: { what: string }) {
   return (
-    <div className="rounded-lg border border-line bg-surface p-4">
+    <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
       <p>
         Sign in with your USC email to {what}.{" "}
         <Link href="/login" className="font-semibold text-cardinal underline">
