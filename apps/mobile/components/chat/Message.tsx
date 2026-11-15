@@ -18,7 +18,7 @@ import {
   isInternalLink,
   moodFor,
   parseAnswer,
-  SIGN_IN_TO_CHAT,
+  needsSignIn,
   toolLabel,
   type ChatMsg,
 } from "./chatState";
@@ -127,7 +127,7 @@ export function Message({ msg, onConfirm }: Props) {
         {!!msg.error && (
           <Text style={styles.error}>
             {msg.error}
-            {msg.error === SIGN_IN_TO_CHAT && (
+            {needsSignIn(msg.error) && (
               <Text
                 style={styles.link}
                 onPress={() => router.push("/auth/login")}

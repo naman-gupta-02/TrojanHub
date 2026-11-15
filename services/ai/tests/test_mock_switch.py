@@ -84,7 +84,10 @@ def test_tommy_asks_signed_out_student_to_sign_in(anon, monkeypatch, llm):
 
 
 def test_chat_can_be_limited_to_signed_in_students(anon, monkeypatch):
+    from app.chat import routes as chat_routes
+
     monkeypatch.setattr(settings, "real_features", "complaints,admin,chat")
+    monkeypatch.setattr(chat_routes, "CHAT_GUESTS", False)  # CHAT_GUESTS=0: no guest mode
     r = anon.post("/api/chat", json={"session_id": "x", "message": "hi"})
     assert r.status_code == 401
     assert anon.get("/api/events/search").status_code == 200  # browsing still open

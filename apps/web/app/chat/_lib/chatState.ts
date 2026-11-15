@@ -168,11 +168,19 @@ export function parseAnswer(raw: string): Piece[] {
 }
 
 export const SIGN_IN_TO_CHAT = "Sign in with your @usc.edu email to chat with Tommy.";
+/** Guests (not signed in) can send a few messages an hour (services/ai/app/chat/routes.py). */
+export const GUEST_LIMIT_REACHED = "That's the guest limit for now. Sign in with your @usc.edu email to keep chatting.";
+
+/** Errors that come with a "Sign in" link. */
+export function needsSignIn(error: string | undefined): boolean {
+  return error === SIGN_IN_TO_CHAT || error === GUEST_LIMIT_REACHED;
+}
 
 /** What to tell the student when a chat request fails. */
 export function chatErrorMessage(e: unknown, offlineHint: string): string {
-  const status = (e as { status?: number } | null)?.status;
+  const { status, code } = (e as { status?: number; code?: string } | null) ?? {};
   if (status === 401) return SIGN_IN_TO_CHAT;
+  if (status === 429 && code === "rate_limited") return GUEST_LIMIT_REACHED;
   if (status === 429) return "Tommy is busy right now. Please try again in a minute.";
   return offlineHint;
 }

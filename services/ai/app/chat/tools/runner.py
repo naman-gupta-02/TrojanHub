@@ -7,9 +7,15 @@ from collections.abc import Awaitable, Callable
 
 from app.chat import store
 from app.chat.tools import complaints, events, lostfound, usc_info
-from app.chat.tools.base import ToolContext, ToolOutcome
+from app.chat.tools import WRITE_TOOLS
+from app.chat.tools.base import GUEST_USER_ID, ToolContext, ToolOutcome
 
 Handler = Callable[[dict, ToolContext], Awaitable[ToolOutcome]]
+# Guests (not signed in) can search; these save something or are about the student's own account.
+SIGNED_IN_ONLY = WRITE_TOOLS | {"get_rewards"}
+GUEST_NOTE = ("The student is chatting as a guest (not signed in). Tell them to sign in with their @usc.edu "
+              "email to do this. They can still ask about USC and browse events and deals.")
+
 ConfirmHandler = Callable[[store.PendingAction, dict], Awaitable[tuple[str, dict]]]
 
 HANDLERS: dict[str, Handler] = {
@@ -36,6 +42,8 @@ async def run_tool(name: str, raw_args: str, ctx: ToolContext) -> ToolOutcome:
     handler = HANDLERS.get(name)
     if not handler:
         return ToolOutcome({"error": {"code": "unknown_tool", "message": f"No tool named {name}"}})
+    if ctx.user_id == GUEST_USER_ID and name in SIGNED_IN_ONLY:
+        return ToolOutcome({"error": {"code": "sign_in_required", "message": "Sign in to do this."}, "note": GUEST_NOTE})
     try:
         args = json.loads(raw_args or "{}")
     except json.JSONDecodeError:

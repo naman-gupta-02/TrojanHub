@@ -481,3 +481,86 @@ def test_tonight_leaves_out_events_that_already_ended(client, llm, monkeypatch):
     swe = next(e for e in result["events"] if "SWE" in e["title"])
     assert swe["happening_now"] is True
     assert all(e["link"].startswith("/events/") for e in result["events"])
+
+
+# ---------------------------------------------------------------------------
+# Guests: signed out, chat is real -> Tommy still answers, but won't save anything
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def guest(monkeypatch):
+    from app.chat import routes as chat_routes
+
+    monkeypatch.setattr(settings, "use_mocks", True)
+    monkeypatch.setattr(settings, "real_features", "chat,lostfound,complaints,admin")
+    monkeypatch.setattr(chat_routes, "CHAT_GUESTS", True)
+    monkeypatch.setattr(chat_routes, "_guest_hits", {})
+    return TestClient(app)
+
+
+def test_guest_can_ask_and_search_events(guest, llm):
+    llm(tool_step("search_events", query="free food", date_range="this_week"), text_step("Here's what's on."))
+    events = chat(guest, "any free food this week?", session="g1")
+    result = next(e for e in events if e["type"] == "tool_result")["result"]
+    assert "error" not in result and "events" in result
+    assert "Here's what's on." in answer_of(events)
+
+
+@pytest.mark.parametrize(("tool", "args"), [
+    ("log_complaint", {"text": "it's so hot in GFS 213"}),
+    ("report_found_item", {"description": "AirPods", "building": "Leavey"}),
+    ("get_rewards", {}),
+])
+def test_guest_is_asked_to_sign_in_before_saving(guest, llm, tool, args):
+    llm(tool_step(tool, **args), text_step("Please sign in first."))
+    events = chat(guest, "do it", session=f"g-{tool}")
+    assert not any(e["type"] == "confirm" for e in events)
+    result = next(e for e in events if e["type"] == "tool_result")["result"]
+    assert result["error"]["code"] == "sign_in_required" and "sign in" in result["note"]
+
+
+def test_guest_messages_are_rate_limited(guest, llm, monkeypatch):
+    from app.chat import routes as chat_routes
+
+    monkeypatch.setattr(chat_routes, "GUEST_LIMIT", 2)
+    llm(text_step("hi"), text_step("hi again"))
+    chat(guest, "hello", session="g2")
+    chat(guest, "hello again", session="g2")
+    r = guest.post("/api/chat", json={"session_id": "g2", "message": "one more"})
+    assert r.status_code == 429
+
+
+def test_expired_token_still_asks_to_sign_in(guest, monkeypatch):
+    """A bad token is not a guest: the app shows "sign in again"."""
+    monkeypatch.setattr(settings, "supabase_url", "https://example.supabase.co")
+    monkeypatch.setattr(settings, "supabase_anon_key", "anon")
+
+    async def reject(token):
+        from app.core.auth import _unauthorized
+        raise _unauthorized("Invalid or expired token")
+
+    monkeypatch.setattr("app.core.auth._verify_with_supabase", reject)
+    r = guest.post("/api/chat", json={"session_id": "g3", "message": "hi"}, headers={"Authorization": "Bearer old"})
+    assert r.status_code == 401
+
+
+def test_guest_can_search_lost_items_without_details(guest, llm, monkeypatch):
+    """Lost & Found search needs sign-in, but a guest asking Tommy still sees what was found."""
+    from app.lostfound import search
+
+    item = {"id": "i1", "title": "AirPods", "tier": "valuable", "location_text": "Leavey Library",
+            "description": "white case, scratched", "photo_url": "https://x/p.jpg"}
+    seen = {}
+
+    def fake_search(q, building_id=None, viewer_id=None):
+        seen["q"] = q
+        return {"results": [{"item": item, "score": 0.91}]}
+
+    monkeypatch.setattr(search, "search_text", fake_search)
+    llm(tool_step("search_lost_items", query="AirPods", building="Leavey"), text_step("Someone found AirPods."))
+    events = chat(guest, "did anyone find my airpods in leavey?", session="g4")
+    result = next(e for e in events if e["type"] == "tool_result")["result"]
+    assert seen["q"] == "AirPods Leavey"
+    (hit,) = result["results"]
+    assert hit == {"id": "i1", "title": "AirPods", "tier": "valuable", "where_found": "Leavey Library",
+                   "match_score": 0.91, "link": "/lost-found/i1"}  # no photo or description
+    assert "sign in" in result["note"]
