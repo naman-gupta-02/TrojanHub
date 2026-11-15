@@ -4,7 +4,7 @@ import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } 
 
 import { router } from 'expo-router';
 
-import { parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from './chatState';
+import { isInternalLink, parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from './chatState';
 import { ConfirmCardView } from './ConfirmCard';
 
 type Props = {
@@ -12,7 +12,8 @@ type Props = {
   onConfirm: (actionId: string, approved: boolean, edits?: Record<string, unknown>) => void;
 };
 
-const open = (url: string) => Linking.openURL(url).catch(() => {});
+const open = (url: string) =>
+  isInternalLink(url) ? router.push(url as Parameters<typeof router.push>[0]) : Linking.openURL(url).catch(() => {});
 
 export function Message({ msg, onConfirm }: Props) {
   if (msg.role === 'user') {

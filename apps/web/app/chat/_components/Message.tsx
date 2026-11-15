@@ -2,7 +2,7 @@
 // One chat bubble: text with [n] citations, tool status lines, source chips and confirm cards.
 import Link from "next/link";
 
-import { parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from "../_lib/chatState";
+import { isInternalLink, parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from "../_lib/chatState";
 import { ConfirmCardView } from "./ConfirmCard";
 
 type Props = {
@@ -55,6 +55,12 @@ export function Message({ msg, onConfirm }: Props) {
                 {parseAnswer(msg.text).map((p, i) => {
                   if (p.kind === "text") return <span key={i}>{p.text}</span>;
                   if (p.kind === "bold") return <strong key={i}>{p.text}</strong>;
+                  if (p.kind === "link" && isInternalLink(p.url))
+                    return (
+                      <Link key={i} href={p.url} className="font-medium text-cardinal underline">
+                        {p.text}
+                      </Link>
+                    );
                   if (p.kind === "link")
                     return (
                       <a key={i} href={p.url} target="_blank" rel="noreferrer" className="break-all text-cardinal underline">
