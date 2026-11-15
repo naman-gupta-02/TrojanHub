@@ -115,6 +115,9 @@ export function ItemDetail() {
           ) : atDps ? (
             <DropoffCard dropoff={DPS_DROPOFF} title="The finder took this to DPS Lost & Found">
               <p className="text-sm">If it&apos;s yours, go to DPS. It should be there: DPS keeps found items for 90 days and checks who really owns them.</p>
+              <p className="text-sm text-muted">
+                To protect the owner, the photo and details are hidden. Be ready to describe it (color, case, stickers, what&apos;s inside) to prove it&apos;s yours.
+              </p>
             </DropoffCard>
           ) : (
             <LeftHereCard item={item} buildings={buildings} title="The finder left it here:">

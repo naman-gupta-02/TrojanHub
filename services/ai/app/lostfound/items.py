@@ -27,6 +27,9 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_SIDE = 1280  # px; plenty for a phone screen, keeps Storage small
 EVERYDAY_DAYS = 14  # items left where they were found drop out of search after this
 DPS_DAYS = 90  # "Found items are kept for a total of 90 days" (dps.usc.edu/services/lost-and-found)
+# Photos of these show names, faces or card numbers, so they're never saved (the AI still uses the
+# photo once to sort and index the item).
+NEVER_STORE_PHOTO = {"ID card", "Credit card"}
 EMBEDDING_COLUMNS = ("img_embedding", "text_embedding")
 
 
@@ -115,6 +118,23 @@ def public_item(row: dict) -> dict:
     return {k: v for k, v in row.items() if k not in EMBEDDING_COLUMNS}
 
 
+def item_for(row: dict, viewer_id: str | None) -> dict:
+    """What `viewer_id` may see of an item.
+
+    Items at DPS (tier "valuable") hide their photo, description and exact spot from everyone but
+    the finder: the real owner proves it's theirs by describing it to DPS, so we don't hand out
+    the answers. Only the type ("AirPods") and the building stay visible. Search still uses the
+    photo and description behind the scenes.
+    """
+    item = public_item(row)
+    if item.get("tier") == "valuable" and item.get("posted_by") != viewer_id:
+        item["photo_url"] = None
+        item["description"] = None
+        if item.get("building_id"):
+            item["location_text"] = None  # the building name is enough to say where it was found
+    return item
+
+
 # ---------------------------------------------------------------------------
 # POST /items
 # ---------------------------------------------------------------------------
@@ -162,7 +182,7 @@ def create_item(
 
     # 4. Save the photo, then the row (remove the photo again if the row fails)
     photo_path, photo_url = (None, None)
-    if img is not None:
+    if img is not None and result.title not in NEVER_STORE_PHOTO:
         photo_path, photo_url = _upload_photo(item_id, _to_jpeg(img))
 
     row = {

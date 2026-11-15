@@ -16,6 +16,7 @@ If the sentence model can't load, CLIP compares the words with the description i
 
 Photo search compares the photos (and descriptions for items without one) with CLIP.
 Only open, unexpired found items are searched, including items posted without a photo. Top 10.
+Items at DPS come back without photo/description for everyone but the finder (items.item_for).
 The `match_items` SQL function skips items without a photo and doesn't check expiry, so this ranks
 in Python instead. Fine for a few hundred items; move to SQL if it grows.
 """
@@ -30,7 +31,7 @@ import numpy as np
 
 from app.core.supabase import get_supabase
 from app.lostfound import clip, semantic
-from app.lostfound.items import MAX_UPLOAD_BYTES, ItemError, _buildings, match_building, public_item, similar_word
+from app.lostfound.items import MAX_UPLOAD_BYTES, ItemError, _buildings, item_for, match_building, similar_word
 
 TOP_K = 10
 MIN_SCORE = 0.3  # below this it's almost surely a different item; "no match" beats a wrong one
@@ -116,7 +117,7 @@ def _open_found_items() -> list[dict]:
     return res.data or []
 
 
-def _results(scored: list[tuple[float, dict]], building_id: str | None) -> dict:
+def _results(scored: list[tuple[float, dict]], building_id: str | None, viewer_id: str | None) -> dict:
     out = []
     for score, row in scored:
         if building_id and row.get("building_id") == building_id:
@@ -125,10 +126,12 @@ def _results(scored: list[tuple[float, dict]], building_id: str | None) -> dict:
         if score >= MIN_SCORE:
             out.append((score, row))
     out.sort(key=lambda s: s[0], reverse=True)
-    return {"results": [{"item": public_item(row), "score": round(score, 2)} for score, row in out[:TOP_K]]}
+    return {"results": [{"item": item_for(row, viewer_id), "score": round(score, 2)} for score, row in out[:TOP_K]]}
 
 
-def _rank_words(clip_query: np.ndarray, meaning_query: np.ndarray | None, query_words: set[str], building_id: str | None) -> dict:
+def _rank_words(
+    clip_query: np.ndarray, meaning_query: np.ndarray | None, query_words: set[str], building_id: str | None, viewer_id: str | None
+) -> dict:
     rows = _open_found_items()
     meanings = semantic.item_vectors(rows) if meaning_query is not None else None
     scored = []
@@ -144,10 +147,10 @@ def _rank_words(clip_query: np.ndarray, meaning_query: np.ndarray | None, query_
             t = _scaled("text>desc", float(clip_query @ txt)) if txt is not None else 0.0
             score = FB_PHOTO * p + FB_DESC * t + FB_KEYWORDS * k if p is not None else FB_DESC_ONLY * t + FB_KEYWORDS_ONLY * k
         scored.append((score, row))
-    return _results(scored, building_id)
+    return _results(scored, building_id, viewer_id)
 
 
-def _rank_photo(query: np.ndarray) -> dict:
+def _rank_photo(query: np.ndarray, viewer_id: str | None) -> dict:
     scored = []
     for row in _open_found_items():
         img, txt = _vec(row.get("img_embedding")), _vec(row.get("text_embedding"))
@@ -156,10 +159,10 @@ def _rank_photo(query: np.ndarray) -> dict:
         if p is None and t is None:
             continue
         scored.append((FB_PHOTO * p + FB_DESC * (t or 0.0) if p is not None else t, row))
-    return _results(scored, None)
+    return _results(scored, None, viewer_id)
 
 
-def search_text(q: str, building_id: str | None = None) -> dict:
+def search_text(q: str, building_id: str | None = None, viewer_id: str | None = None) -> dict:
     """GET /items/search. The building can come as an id or inside the words ("...at Leavey"),
     which is how Tommy's search_lost_items tool sends it."""
     q = (q or "").strip()
@@ -183,10 +186,11 @@ def search_text(q: str, building_id: str | None = None) -> dict:
         meaning[0] if meaning is not None else None,
         _words(cleaned) - bwords,
         building_id,
+        viewer_id,
     )
 
 
-def search_photo(photo: bytes) -> dict:
+def search_photo(photo: bytes, viewer_id: str | None = None) -> dict:
     """POST /items/search-by-image: an old photo of your item -> similar found items."""
     if not photo:
         raise ItemError(422, "missing_photo", "Add a photo of the item you lost.")
@@ -196,4 +200,4 @@ def search_photo(photo: bytes) -> dict:
         vec = clip.embed_image(photo)
     except ValueError as e:
         raise ItemError(400, "bad_photo", str(e)) from e
-    return _rank_photo(vec)
+    return _rank_photo(vec, viewer_id)

@@ -66,7 +66,7 @@ export default function ReportFoundPage() {
     );
   }
 
-  if (posted) return <Posted initial={posted} />;
+  if (posted) return <Posted initial={posted} photoGiven={!!photo} />;
 
   return (
     <section className="max-w-2xl space-y-5">
@@ -133,7 +133,7 @@ export default function ReportFoundPage() {
   );
 }
 
-function Posted({ initial }: { initial: CreateItemResponse }) {
+function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiven: boolean }) {
   const [item, setItem] = useState<Item>(initial.item);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +174,10 @@ function Posted({ initial }: { initial: CreateItemResponse }) {
           <p className="text-sm text-muted">{item.location_text}</p>
         </div>
       </div>
+
+      {photoGiven && !item.photo_url && (
+        <p className="rounded-md bg-gold/25 p-3 text-sm">We didn&apos;t save your photo: ID and bank cards show private info. The item is still posted.</p>
+      )}
 
       <WhereNowChoice tier={item.tier} onChange={choose} busy={busy} />
       <p className="text-sm text-muted">

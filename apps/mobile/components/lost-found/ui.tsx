@@ -65,7 +65,16 @@ export function LeftHereCard({ item, buildings, title, children }: { item: Item;
   );
 }
 
-export function ItemPhoto({ item, size }: { item: Pick<Item, 'photo_url' | 'title'>; size: number }) {
+export function ItemPhoto({ item, size }: { item: Pick<Item, 'photo_url' | 'title' | 'tier'>; size: number }) {
+  if (!item.photo_url && item.tier === 'valuable') {
+    // Items at DPS: the photo is hidden so only the real owner can describe it (see forViewer)
+    return (
+      <View style={[s.noPhoto, { width: size, height: size, gap: 2 }]} accessibilityLabel="Photo hidden to protect the owner">
+        <Text style={{ fontSize: size > 100 ? 28 : 18 }}>🔒</Text>
+        <Text style={{ color: colors.muted, fontSize: fontSize.xs, fontWeight: '700' }}>Details hidden</Text>
+      </View>
+    );
+  }
   if (item.photo_url) {
     return <Image source={{ uri: item.photo_url }} style={{ width: size, height: size, borderRadius: radius.md, backgroundColor: colors.line }} accessibilityLabel={item.title} />;
   }

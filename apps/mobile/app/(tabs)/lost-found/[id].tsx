@@ -105,6 +105,7 @@ export default function ItemScreen() {
       ) : item.tier === 'valuable' ? (
         <DropoffCard dropoff={DPS_DROPOFF} title="The finder took this to DPS Lost & Found">
           <Text style={{ color: colors.ink }}>If it’s yours, go to DPS. It should be there: DPS keeps found items for 90 days and checks who really owns them.</Text>
+          <Text style={s.muted}>To protect the owner, the photo and details are hidden. Be ready to describe it (color, case, stickers, what’s inside) to prove it’s yours.</Text>
         </DropoffCard>
       ) : (
         <LeftHereCard item={item} buildings={buildings} title="The finder left it here:">

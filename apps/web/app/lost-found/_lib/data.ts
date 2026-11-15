@@ -36,9 +36,18 @@ export async function currentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null;
 }
 
+/** What this viewer may see (mirrors items.item_for on the server). Items at DPS hide their photo,
+ * description and exact spot from everyone but the finder: the owner proves it's theirs by
+ * describing it to DPS, so we don't hand out the answers. */
+export function forViewer(item: Item, viewerId: string | null): Item {
+  if (item.tier !== "valuable" || item.posted_by === viewerId) return item;
+  return { ...item, photo_url: null, description: null, location_text: item.building_id ? null : item.location_text };
+}
+
 /** Open found items that haven't expired, newest first. */
 export async function listRecent(): Promise<Item[]> {
   if (!supabase) return MOCK_ITEMS;
+  const viewer = await currentUserId();
   const { data, error } = await supabase
     .from("items")
     .select(ITEM_COLUMNS)
@@ -48,14 +57,15 @@ export async function listRecent(): Promise<Item[]> {
     .order("created_at", { ascending: false })
     .limit(40);
   if (error) throw new Error(error.message);
-  return (data ?? []) as Item[];
+  return ((data ?? []) as Item[]).map((i) => forViewer(i, viewer));
 }
 
 export async function getItem(id: string): Promise<Item | null> {
   if (!supabase) return MOCK_ITEMS.find((i) => i.id === id) ?? null;
+  const viewer = await currentUserId();
   const { data, error } = await supabase.from("items").select(ITEM_COLUMNS).eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
-  return data as Item | null;
+  return data ? forViewer(data as Item, viewer) : null;
 }
 
 let buildingsCache: Promise<Record<string, Building>> | null = null;

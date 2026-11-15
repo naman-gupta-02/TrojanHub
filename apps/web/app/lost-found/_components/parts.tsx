@@ -13,7 +13,19 @@ export function TierBadge({ tier }: { tier: ItemTier }) {
   );
 }
 
-export function ItemPhoto({ item, className = "" }: { item: Pick<Item, "photo_url" | "title">; className?: string }) {
+export function ItemPhoto({ item, className = "" }: { item: Pick<Item, "photo_url" | "title" | "tier">; className?: string }) {
+  if (!item.photo_url && item.tier === "valuable") {
+    // Items at DPS: the photo is hidden so only the real owner can describe it (see forViewer)
+    return (
+      <div className={`flex flex-col items-center justify-center gap-1 bg-line/60 p-2 text-center text-muted ${className}`} aria-label="Photo hidden to protect the owner">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+          <rect x="5" y="11" width="14" height="9" rx="2" />
+          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+        </svg>
+        <span className="text-xs font-semibold">Details hidden</span>
+      </div>
+    );
+  }
   if (item.photo_url) {
     // Supabase Storage URLs; a plain <img> avoids configuring remote hosts for next/image.
     // eslint-disable-next-line @next/next/no-img-element

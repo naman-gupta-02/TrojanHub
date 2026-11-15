@@ -54,7 +54,7 @@ export default function ReportFoundScreen() {
       </View>
     );
   }
-  if (posted) return <Posted initial={posted} />;
+  if (posted) return <Posted initial={posted} photoGiven={!!photo} />;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -109,7 +109,7 @@ export default function ReportFoundScreen() {
   );
 }
 
-function Posted({ initial }: { initial: CreateItemResponse }) {
+function Posted({ initial, photoGiven }: { initial: CreateItemResponse; photoGiven: boolean }) {
   const [item, setItem] = useState<Item>(initial.item);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +148,12 @@ function Posted({ initial }: { initial: CreateItemResponse }) {
           <Text style={s.muted}>{item.location_text}</Text>
         </View>
       </View>
+
+      {photoGiven && !item.photo_url ? (
+        <View style={[s.card, { backgroundColor: '#FFF4CC' }]}>
+          <Text style={{ color: colors.ink }}>We didn’t save your photo: ID and bank cards show private info. The item is still posted.</Text>
+        </View>
+      ) : null}
 
       <WhereNowChoice tier={item.tier} onChange={choose} busy={busy} />
       <Text style={s.muted}>

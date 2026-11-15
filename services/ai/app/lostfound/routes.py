@@ -62,7 +62,7 @@ async def search_items(q: str, building_id: str | None = None, user_id: str = De
     if settings.mock("lostfound"):
         return load_mock("items_search")
     try:
-        return await run_in_threadpool(search.search_text, q, building_id)
+        return await run_in_threadpool(search.search_text, q, building_id, user_id)
     except items.ItemError as e:
         raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
 
@@ -73,7 +73,7 @@ async def search_items_by_image(photo: UploadFile = File(...), user_id: str = De
         return load_mock("items_search")
     photo_bytes = await photo.read()
     try:
-        return await run_in_threadpool(search.search_photo, photo_bytes)
+        return await run_in_threadpool(search.search_photo, photo_bytes, user_id)
     except items.ItemError as e:
         raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
 
