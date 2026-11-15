@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 
-import { Chip, ErrorState, Verified, btn, categoryInfo, errorMessage, fmtTime, relativeDay, timeRange, untilLabel, useApi } from "./kit";
+import { Chip, ErrorState, Verified, btn, canCheckIn, categoryInfo, errorMessage, fmtTime, relativeDay, timeRange, untilLabel, useApi, useNow } from "./kit";
 
 export function EventDetail() {
   const { id } = useParams<{ id: string }>();
@@ -49,13 +49,21 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
       }
     });
 
-  const register = () =>
-    act("register", async () => {
-      await api.events.save(e.id, { register: true });
+  const register = () => {
+    // open the form right on the click; after an await, browsers treat it as a popup and block it
+    if (e.register_url) window.open(e.register_url, "_blank", "noopener");
+    return act("register", async () => {
+      try {
+        await api.events.save(e.id, { register: true });
+      } catch (err) {
+        // the organizer's form is open either way; only our calendar copy failed
+        if (e.register_url) throw new Error(`The form is open in a new tab, but we couldn't add it to your TrojanHub calendar: ${errorMessage(err)}`);
+        throw err;
+      }
       onChange({ ...d, saved: true, registered: true });
-      if (e.register_url) window.open(e.register_url, "_blank", "noopener");
-      else setToast({ ok: true, text: "You're registered! It's on your TrojanHub calendar." });
+      if (!e.register_url) setToast({ ok: true, text: "You're registered! It's on your TrojanHub calendar." });
     });
+  };
 
   return (
     <article className="grid gap-8 lg:grid-cols-[1fr_340px]">
@@ -114,8 +122,17 @@ function Detail({ d, onChange }: { d: EventDetailResponse; onChange: (d: EventDe
             <p className="font-bold">🏆 Counts toward rewards</p>
             {d.counts_toward.map((p) => (
               <Link key={p.program_id} href="/rewards" className="block text-sm hover:underline">
-                {p.name}: {p.attended} of {p.required} attended
-                {p.attended + 1 === p.required && !d.attended && <strong className="text-cardinal"> · this one completes it!</strong>}
+                {p.style === "entries" ? (
+                  <>
+                    {p.name}: {p.attended} entr{p.attended === 1 ? "y" : "ies"} so far
+                    {!d.attended && <strong className="text-cardinal"> · checking in here adds one</strong>}
+                  </>
+                ) : (
+                  <>
+                    {p.name}: {p.attended} of {p.required} attended
+                    {p.attended + 1 === p.required && !d.attended && <strong className="text-cardinal"> · this one completes it!</strong>}
+                  </>
+                )}
               </Link>
             ))}
           </section>
@@ -212,7 +229,8 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CheckinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const live = untilLabel(detail.event.starts_at, detail.event.ends_at) === "Happening now";
+  useNow(); // re-check every 30 s, so "I'm here!" appears without a refresh
+  const live = canCheckIn(detail.event.starts_at, detail.event.ends_at);
 
   async function checkIn(withCode?: string) {
     setBusy(true);
@@ -241,7 +259,11 @@ function CheckIn({ detail, onChange }: { detail: EventDetailResponse; onChange: 
         <p className="font-bold text-success">✓ You checked in</p>
         {result?.rewards.map((r) => (
           <p key={r.program.id} className="text-sm">
-            {r.attended >= r.required ? (
+            {r.style === "entries" ? (
+              <>
+                🎟️ {r.program.name}: <strong>{r.attended} entr{r.attended === 1 ? "y" : "ies"}</strong>
+              </>
+            ) : r.attended >= r.required ? (
               <strong>🎉 {r.program.name} complete! Claim your reward from {r.program.office}.</strong>
             ) : (
               <>

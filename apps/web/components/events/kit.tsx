@@ -48,8 +48,16 @@ export function untilLabel(start: string, end: string | null = null): string {
   return relativeDay(start);
 }
 
+/** Same window the API allows for "I'm here": 30 min before the start until 30 min after the end */
+export function canCheckIn(start: string, end: string | null = null): boolean {
+  const now = Date.now();
+  const s = new Date(start).getTime();
+  const e = end ? new Date(end).getTime() : s + 2 * 3_600_000;
+  return now >= s - 30 * 60_000 && now <= e + 30 * 60_000;
+}
+
 export function dateParts(iso: string): { weekday: string; day: string; month: string } {
-  const parts = Object.fromEntries(partsFmt.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  const parts =Object.fromEntries(partsFmt.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
   return { weekday: parts.weekday, day: parts.day, month: parts.month };
 }
 
@@ -104,6 +112,26 @@ export function useApi<T>(load: () => Promise<T>, key = "") {
     reload: useCallback(() => setNonce((n) => n + 1), []),
     setData: (data: T) => setResult({ stamp, data }),
   };
+}
+
+/** `value`, but only after it stopped changing for `ms` (search boxes: one request per pause, not per key) */
+export function useDebounced<T>(value: T, ms = 300): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return settled;
+}
+
+/** Re-renders every `ms`, for things that change with the clock ("check-in is open") */
+export function useNow(ms = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
 }
 
 export function errorMessage(e: unknown): string {
@@ -212,13 +240,15 @@ export function DealCard({ deal, reason, onVoted }: { deal: Deal; reason?: strin
   const endsSoon = deal.expires_at && new Date(deal.expires_at).getTime() - openedAt < 12 * 3_600_000;
 
   async function vote(stillActive: boolean) {
-    setVoted(stillActive);
+    const before = voted;
+    const next = voted === stillActive ? null : stillActive; // tap the same thumb again to take it back
+    setVoted(next);
     try {
-      const res = await api.deals.vote(deal.id, stillActive);
+      const res = await api.deals.vote(deal.id, next);
       setVotes(res.still_active_votes);
       onVoted?.(res.still_active_votes);
     } catch {
-      setVoted(null);
+      setVoted(before);
     }
   }
 

@@ -125,7 +125,9 @@ async def scan_flyer(args: dict, ctx: ToolContext) -> ToolOutcome:
     draft = {**res["fields"], "type": res["type"], "missing": res.get("missing", []), "flyer_url": args["image_url"]}
     if res.get("duplicate_of"):
         return ToolOutcome({"duplicate_of": res["duplicate_of"], "fields": res["fields"],
-                            "note": "This event is already on TrojanHub. Offer to save it instead."})
+                            "note": "This deal is already on TrojanHub (Deals page), so don't post it again."
+                            if res.get("type") == "deal" else
+                            "This event is already on TrojanHub. Offer to save it instead."})
     action = store.add_pending(session_id=ctx.session_id, user_id=ctx.user_id, tool="scan_flyer",
                                args={**args, "_image": real_image}, draft=draft, auth_header=ctx.auth_header)
     f = res["fields"]
@@ -168,6 +170,8 @@ async def confirm_scan_flyer(action: store.PendingAction, draft: dict) -> tuple[
                 "link": draft.get("register_url"), "starts_at": draft.get("starts_at"), "expires_at": draft.get("ends_at")}
         res = await call("POST", "/deals", action.auth_header, json={k: v for k, v in body.items() if v is not None})
         if "error" in res:
+            if res.get("status") == 409:  # same deal already posted
+                return "failed", {**res, "message": res["error"].get("message", "That deal is already posted.")}
             return "failed", res
         return "done", {**res, "message": f"Added! \u201c{title}\u201d is on the Deals page."}
 

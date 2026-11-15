@@ -182,3 +182,50 @@ def test_tommy_does_not_offer_to_post_an_old_flyer(monkeypatch):
     assert out.result["ended"] is True
     assert "already ended" in out.result["note"]
     assert out.confirm is None  # no "Add this event" card
+
+
+# --- deals: no duplicates, and you can take a vote back -------------------------
+def test_duplicate_deal_title_matches():
+    deals = [{"id": "s1", "title": "Starbucks Free Cup Day"}, {"id": "c1", "title": "15% off any drink at Cardinal Café"}]
+    assert dedupe.find_duplicate_deal("Starbucks Free Cup Day", deals)["id"] == "s1"
+    assert dedupe.find_duplicate_deal("STARBUCKS free cup day!", deals)["id"] == "s1"
+    assert dedupe.find_duplicate_deal("Free bike safety check", deals) is None
+
+
+def _live_deals(monkeypatch, deals):
+    from app.events import routes
+
+    monkeypatch.setattr(routes, "db_live", lambda: True)
+    monkeypatch.setattr(store, "search_deals", lambda *a, **k: deals)
+    monkeypatch.setattr(store, "profile", lambda uid: None)
+    monkeypatch.setattr(store, "insert_deal", lambda row: {"id": "new", **row})
+
+
+def test_same_deal_twice_is_rejected(client, monkeypatch):
+    _live_deals(monkeypatch, [{"id": "s1", "title": "Starbucks Free Cup Day"}])
+    r = client.post("/api/deals", json={"title": "Starbucks Free Cup Day", "kind": "ongoing"}, headers=SIGNED_IN)
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "duplicate"
+    forced = client.post("/api/deals", json={"title": "Starbucks Free Cup Day", "kind": "ongoing", "force": True},
+                         headers=SIGNED_IN)
+    assert forced.status_code == 201
+
+
+def test_vote_can_be_taken_back(client, monkeypatch):
+    from app.events import routes
+
+    deal = {"id": "d0000000-0000-0000-0000-000000000001", "still_active_votes": 3}
+    monkeypatch.setattr(routes, "db_live", lambda: True)
+    monkeypatch.setattr(store, "get_deal", lambda i: deal)
+
+    def set_votes(i, v):
+        deal["still_active_votes"] = v
+        return v
+
+    monkeypatch.setattr(store, "set_deal_votes", set_votes)
+    url = f"/api/deals/{deal['id']}/vote"
+    assert client.post(url, json={"still_active": True}, headers=SIGNED_IN).json()["still_active_votes"] == 4
+    assert client.post(url, json={"still_active": True}, headers=SIGNED_IN).json()["still_active_votes"] == 4  # no double count
+    r = client.post(url, json={"still_active": None}, headers=SIGNED_IN).json()  # unlike
+    assert r == {"still_active_votes": 3, "my_vote": None}
+    assert client.post(url, json={"still_active": False}, headers=SIGNED_IN).json()["still_active_votes"] == 2

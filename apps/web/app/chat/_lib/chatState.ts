@@ -113,6 +113,33 @@ export const SUGGESTED_PROMPTS = [
   "I found a blue umbrella at Leavey",
 ];
 
+/** Phrases Tommy suggests on each page (the floating "Chat with Tommy" button). */
+export const PAGE_PROMPTS: Record<string, string[]> = {
+  home: ["What's happening on campus today?", "Any free food today?", "When is the food pantry open?"],
+  "lost-found": ["I lost my AirPods in Leavey", "Did anyone find a black Hydro Flask?", "I found a blue umbrella at Leavey"],
+  events: ["What's on this weekend?", "Any career events this week?", "Events with free food today?"],
+  deals: ["Any free food today?", "Student discounts near campus?", "What freebies end soon?"],
+  rewards: ["How do I earn rewards?", "Which events count toward my rewards?", "Ways to earn around USC?"],
+  report: ["It's so hot in GFS 213", "The elevator in Leavey is broken", "A water fountain in VKC is leaking"],
+};
+
+/** "/lost-found/123" -> the Lost & Found phrases; unknown pages get the general ones. */
+export function promptsFor(path: string | null | undefined): string[] {
+  const section = (path ?? "").split("/").filter(Boolean)[0] ?? "home";
+  if (section === "deals" || (path ?? "").includes("tab=deals")) return PAGE_PROMPTS.deals;
+  return PAGE_PROMPTS[section] ?? SUGGESTED_PROMPTS.slice(0, 3);
+}
+
+export type TommyMood = "default" | "searching" | "celebrating" | "winking";
+
+/** Tommy's face for a reply: searching while he works, celebrating when something went through. */
+export function moodFor(msg: ChatMsg | undefined): TommyMood {
+  if (!msg) return "winking";
+  if (msg.streaming) return "searching";
+  if (msg.confirms.some((c) => c.status === "done")) return "celebrating";
+  return "default";
+}
+
 /** The edit fields to show for a card (e.g. the photo toggle only when a photo is attached). */
 export function editableFields(card: { tool: string; draft: Record<string, unknown> }): EditField[] {
   return (EDITABLE[card.tool] ?? []).filter((f) => !f.onlyIf || Boolean(card.draft[f.onlyIf]));

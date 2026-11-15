@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Tommy the robot retriever, winking">
+<circle cx="100" cy="100" r="100" fill="#8C1810"/>
+<line x1="100" y1="58" x2="100" y2="36" stroke="#FFC72C" stroke-width="6" stroke-linecap="round"/>
+<circle cx="100" cy="30" r="8" fill="#FFC72C"/>
+<rect x="32" y="56" width="32" height="68" rx="16" fill="#FFF8E7" transform="rotate(16 48 56)"/>
+<rect x="136" y="56" width="32" height="68" rx="16" fill="#FFF8E7" transform="rotate(-28 152 56)"/>
+<rect x="52" y="54" width="96" height="96" rx="36" fill="#FFC72C"/>
+<circle cx="80" cy="92" r="9" fill="#8C1810"/>
+<circle cx="83" cy="89" r="3" fill="#FFF8E7"/>
+<path d="M111 90 Q120 99 129 90" fill="none" stroke="#8C1810" stroke-width="5" stroke-linecap="round"/>
+<ellipse cx="100" cy="124" rx="27" ry="19" fill="#FFF8E7"/>
+<ellipse cx="100" cy="114" rx="9" ry="6" fill="#8C1810"/>
+<path d="M88 127 Q100 137 112 127" fill="none" stroke="#8C1810" stroke-width="4" stroke-linecap="round"/>
+<rect x="94" y="130" width="12" height="18" rx="6" fill="#D9483B"/>
+</svg>

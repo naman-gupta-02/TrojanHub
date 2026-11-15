@@ -2,7 +2,9 @@
 // One chat bubble: text with [n] citations, tool status lines, source chips and confirm cards.
 import Link from "next/link";
 
-import { isInternalLink, parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from "../_lib/chatState";
+import { TommyAvatar } from "@/components/tommy/TommyAvatar";
+
+import { isInternalLink, moodFor, parseAnswer, SIGN_IN_TO_CHAT, toolLabel, type ChatMsg } from "../_lib/chatState";
 import { ConfirmCardView } from "./ConfirmCard";
 
 type Props = {
@@ -13,7 +15,7 @@ type Props = {
 export function Message({ msg, onConfirm }: Props) {
   if (msg.role === "user") {
     return (
-      <div className="flex justify-end">
+      <div className="fade-up flex justify-end">
         <div className="max-w-[80%] space-y-2 rounded-2xl rounded-br-md bg-cardinal px-4 py-2.5 text-white">
           {msg.imageUri && (
             // eslint-disable-next-line @next/next/no-img-element -- local blob preview
@@ -29,8 +31,9 @@ export function Message({ msg, onConfirm }: Props) {
   const waiting = msg.streaming && !msg.text && msg.tools.every((t) => t.done);
 
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] space-y-2">
+    <div className="fade-up flex items-start justify-start gap-2">
+      <TommyAvatar mood={moodFor(msg)} size={32} className="mt-0.5" />
+      <div className="min-w-0 max-w-[85%] space-y-2">
         {msg.tools.length > 0 && (
           <ul className="space-y-0.5 text-xs text-muted" aria-live="polite">
             {msg.tools.map((t) => (

@@ -160,6 +160,7 @@ export function FlyerScanner() {
           link: form.register_url || null,
           starts_at: fromLocalInput(form.starts_at),
           expires_at: fromLocalInput(form.ends_at),
+          force,
         });
         router.push("/deals");
       }
@@ -201,7 +202,7 @@ export function FlyerScanner() {
           <button onClick={() => fileInput.current?.click()} className={btn.primary}>
             Choose a photo
           </button>
-          <input ref={fileInput} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} aria-label="Flyer photo" />
+          <input ref={fileInput} type="file" accept="image/*" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} aria-label="Flyer photo" />
         </div>
         {error && <p role="alert" className="rounded-xl bg-danger/5 p-3 text-sm text-danger">{error}</p>}
         <p className="text-center text-sm text-muted">
@@ -323,11 +324,12 @@ export function FlyerScanner() {
             <p className="font-bold">👀 This might already be posted</p>
             <p className="text-sm">
               We found <strong>{duplicate.title}</strong>
-              {duplicate.starts_at && <> on {relativeDay(duplicate.starts_at)} at {fmtTime(duplicate.starts_at)}</>}. Posting it twice splits the RSVPs.
+              {kind === "event" && duplicate.starts_at && <> on {relativeDay(duplicate.starts_at)} at {fmtTime(duplicate.starts_at)}</>}.{" "}
+              {kind === "event" ? "Posting it twice splits the RSVPs." : "Posting it twice clutters the Deals page."}
             </p>
             <div className="flex flex-wrap gap-2">
-              <Link href={`/events/${duplicate.id}`} className={btn.primary}>
-                View existing event
+              <Link href={kind === "event" ? `/events/${duplicate.id}` : "/deals"} className={btn.primary}>
+                {kind === "event" ? "View existing event" : "See it on Deals"}
               </Link>
               <button type="button" onClick={() => submit(true)} disabled={saving} className={btn.secondary}>
                 It&apos;s different, post anyway

@@ -6,7 +6,7 @@ one-line `reason` shown on the card, so students see *why* it was picked.
 
 from datetime import timedelta
 
-from app.events import store
+from app.events import perks, store
 from app.events.dates import LA, friendly, friendly_time, la_day_bounds, la_today, now_utc, parse_ts
 
 FOR_YOU = 3
@@ -29,7 +29,7 @@ def _day_label(start) -> str:
 
 
 def score_event(e: dict, interests: set[str], saved: dict[str, bool],
-                program_progress: dict[str, tuple[str, int, int]]) -> tuple[float, str]:
+                program_progress: dict[str, tuple[str, int, int, str]]) -> tuple[float, str]:
     """(points, reason) for one event."""
     now = now_utc()
     start = parse_ts(e["starts_at"])
@@ -39,8 +39,11 @@ def score_event(e: dict, interests: set[str], saved: dict[str, bool],
     if e["id"] in saved and hours <= 3:
         signals.append((6, f"You saved this · starts {_day_label(start)}"))
     if e["id"] in program_progress:
-        name, done, need = program_progress[e["id"]]
-        signals.append((4, f"Counts toward {name} ({done}/{need})"))
+        name, done, need, style = program_progress[e["id"]]
+        if style == "entries":
+            signals.append((4, f"One more entry in the {name} ({done} so far)"))
+        else:
+            signals.append((4, f"Counts toward {name} ({done}/{need})"))
     if e["category"] in interests:
         signals.append((3, f"Matches your interest: {CATEGORY_LABEL.get(e['category'], e['category'])}"))
     if e["has_freebie"]:
@@ -73,6 +76,19 @@ def score_deal(d: dict, interests: set[str]) -> tuple[float, str]:
     return 1 + min(votes / 5, 1.5), (f"{votes} students say it still works" if votes >= 3 else "Student deal")
 
 
+def is_free_today(d: dict, day_start, day_end, now) -> bool:
+    """A one-time deal that's on today and is a today thing: it ends within 24 hours, or it
+    started today. A 3-day BOGO stays on the Deals page instead of every morning's digest."""
+    if d["kind"] != "one_time":
+        return False
+    starts, ends = parse_ts(d.get("starts_at")), parse_ts(d.get("expires_at"))
+    if starts and starts >= day_end:
+        return False  # starts tomorrow or later
+    if ends and ends <= now:
+        return False
+    return bool((ends and ends - now <= timedelta(hours=24)) or (starts and starts >= day_start))
+
+
 def today_freebies(events: list[dict], deals: list[dict]) -> list[dict]:
     start, end = la_day_bounds()
     now = now_utc()
@@ -82,11 +98,7 @@ def today_freebies(events: list[dict], deals: list[dict]) -> list[dict]:
         if e["has_freebie"] and start <= parse_ts(e["starts_at"]) < end
         and (parse_ts(e["ends_at"]) or parse_ts(e["starts_at"]) + timedelta(hours=2)) > now
     ]
-    items += [
-        {"kind": "deal", "deal": d}
-        for d in deals
-        if d["kind"] == "one_time" and (not d["starts_at"] or parse_ts(d["starts_at"]) < end)
-    ]
+    items += [{"kind": "deal", "deal": d} for d in deals if is_free_today(d, start, end, now)]
     # events by start time, then deals ending soonest
     return sorted(items, key=lambda i: (0, i["event"]["starts_at"]) if i["kind"] == "event"
                   else (1, i["deal"]["expires_at"] or "9999"))
@@ -102,12 +114,12 @@ def build(user_id: str) -> dict:
     attended = store.attended_ids(user_id) if profile else set()
 
     # events that count toward a reward program the student has started
-    program_progress: dict[str, tuple[str, int, int]] = {}
+    program_progress: dict[str, tuple[str, int, int, str]] = {}
     for program, ids in store.reward_programs():
         done = len(ids & attended)
         if done:
             for event_id in ids - attended:
-                program_progress[event_id] = (program["name"], done, program["required_count"])
+                program_progress[event_id] = (program["name"], done, program["required_count"], perks.style(program["id"]))
 
     scored = [(*score_event(e, interests, saved, program_progress), "event", e) for e in events]
     scored += [(*score_deal(d, interests), "deal", d) for d in deals]

@@ -1,7 +1,7 @@
 """Reminders (ARCHITECTURE.md §7.3), run every 10 minutes:
 
-- Saved/registered events starting in 25–35 min -> push + email, once (event_saves.reminder_sent_at).
-- Ticket alerts: saved events whose tickets go on sale in 25–35 min, so nobody misses
+- Saved/registered events starting within 35 min -> push + email, once (event_saves.reminder_sent_at).
+- Ticket alerts: saved events whose tickets go on sale within 35 min, so nobody misses
   the Diwali tickets again. Once per user per event (notification_log).
 """
 
@@ -15,7 +15,13 @@ from app.events.settings import p3
 from app.notify.email import EmailError, email_configured, send_email
 from app.notify.push import send_push
 
-WINDOW = (timedelta(minutes=25), timedelta(minutes=35))
+# Anything starting within the next 35 min that hasn't been reminded yet. Starting the window at
+# "now" (not 25 min) means a late or slow run can't skip an event; each one is still sent once.
+WINDOW = (timedelta(0), timedelta(minutes=35))
+
+
+def _minutes_until(when, now) -> int:
+    return max(round((when - now).total_seconds() / 60), 1)
 
 
 def _notify(user_id: str, title: str, body: str, link: str, data: dict) -> tuple[int, str | None]:
@@ -49,7 +55,7 @@ def run() -> dict:
         start = parse_ts(e["starts_at"])
         where = f" at {e['location_text']}" if e.get("location_text") else ""
         free = f" · {e['freebie_desc']}" if e.get("has_freebie") and e.get("freebie_desc") else ""
-        n, err = _notify(save["user_id"], f"Starts in 30 min: {e['title']}", f"{friendly_time(start)}{where}{free}",
+        n, err = _notify(save["user_id"], f"Starts in {_minutes_until(start, now)} min: {e['title']}", f"{friendly_time(start)}{where}{free}",
                          f"{p3.public_web_url}/events/{e['id']}", {"event_id": e["id"]})
         store.mark_reminder_sent(save["id"])
         sent += n
@@ -63,7 +69,7 @@ def run() -> dict:
         if not store.log_notification(save["user_id"], "reminder", ref):
             continue
         opens = parse_ts(e["tickets_open_at"])
-        n, err = _notify(save["user_id"], f"Tickets open in 30 min: {e['title']}", f"On sale {friendly(opens)}. Be ready!",
+        n, err = _notify(save["user_id"], f"Tickets open in {_minutes_until(opens, now)} min: {e['title']}", f"On sale {friendly(opens)}. Be ready!",
                          e.get("ticket_url") or f"{p3.public_web_url}/events/{e['id']}", {"event_id": e["id"]})
         sent += n
         if err:

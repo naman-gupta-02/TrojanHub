@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from app.core.supabase import get_supabase
-from app.events.dates import has_ended, iso, now_utc, parse_ts
+from app.events.dates import has_ended, iso, la_day_bounds, la_today, now_utc, parse_ts
 
 EVENT_SELECT = "*, orgs(name, verified)"
 _TWO_HOURS = timedelta(hours=2)
@@ -28,6 +28,41 @@ def is_uuid(value: str) -> bool:
 def clean_query(q: str | None) -> str:
     """Keep words only: PostgREST `or=(...)` filters break on commas, parentheses and %."""
     return re.sub(r"[^\w\s'&-]", " ", q or "").strip()[:80]
+
+
+# Words that don't narrow a search ("any events at Leavey tonight?" -> "leavey" + today)
+_FILLER = set(
+    "a an and any anything are around at campus deal deals discount discounts event events find for going happening "
+    "i in is list me near now of on or show some something the there this to usc what whats where".split()
+)
+# "free food", "freebies", "swag": that's the freebie filter, not text to look for
+_FREEBIE_PHRASE = re.compile(r"\b(free\s+(food|stuff|things)|freebies?|giveaways?|swag|merch)\b", re.I)
+_TIME_WORDS = {"today": 0, "tonight": 0, "tomorrow": 1}
+
+
+def search_words(q: str | None) -> list[str]:
+    """Each word is matched on its own (all must match), so "pizza night" finds "Hack Night · Free pizza"."""
+    words = [w for w in clean_query(q).split() if re.search(r"\w", w)]
+    return [w for w in words if w.lower().strip("'") not in _FILLER and w.lower() not in _TIME_WORDS and w.lower() != "week"][:6]
+
+
+def parse_query(q: str | None) -> tuple[str | None, bool, tuple[datetime, datetime] | None]:
+    """Text -> (remaining text, wants freebies, time range from "today"/"tonight"/"tomorrow"/"this week")."""
+    if not q:
+        return q, False, None
+    freebie = bool(_FREEBIE_PHRASE.search(q))
+    q = _FREEBIE_PHRASE.sub(" ", q)
+    words = {w.lower() for w in clean_query(q).split()}
+    when = None
+    for word, offset in _TIME_WORDS.items():
+        if word in words:
+            start, end = la_day_bounds(la_today() + timedelta(days=offset))
+            when = (start, end)
+            break
+    if when is None and "week" in words:
+        start, _ = la_day_bounds()
+        when = (start, start + timedelta(days=7))
+    return q, freebie, when
 
 
 def _event(row: dict) -> dict:
@@ -54,6 +89,14 @@ def search_events(
     limit: int = 200,
 ) -> list[dict]:
     """Published events, soonest first. Events that already ended are always left out."""
+    q, wants_freebie, when = parse_query(q)
+    if wants_freebie and freebie is None:
+        freebie = True
+    if when and not start and not end:
+        # "today": still running or starting later today (not this morning's events that ended)
+        end = when[1]
+        if when[0] > now_utc():
+            start = when[0]
     query = get_supabase().table("events").select(EVENT_SELECT).eq("status", "published")
     if start:
         query = query.gte("starts_at", iso(start))
@@ -68,9 +111,8 @@ def search_events(
         query = query.eq("is_free", free)
     if freebie is not None:
         query = query.eq("has_freebie", freebie)
-    words = clean_query(q)
-    if words:
-        like = f"%{words}%"
+    for word in search_words(q):  # one or=(...) per word; PostgREST ANDs them together
+        like = f"%{word}%"
         query = query.or_(
             f"title.ilike.{like},description.ilike.{like},location_text.ilike.{like},freebie_desc.ilike.{like}"
         )
@@ -122,9 +164,8 @@ def insert_event(row: dict) -> dict:
 def search_deals(q: str | None = None, active: bool = True, limit: int = 100) -> list[dict]:
     """Active = not expired. One-time deals ending soonest first, then ongoing deals by votes."""
     query = get_supabase().table("deals").select("*")
-    words = clean_query(q)
-    if words:
-        like = f"%{words}%"
+    for word in search_words(q):
+        like = f"%{word}%"
         query = query.or_(f"title.ilike.{like},description.ilike.{like},how_to_claim.ilike.{like}")
     rows = _rows(query.limit(limit).execute())
     if active:
@@ -187,6 +228,12 @@ def attended_ids(user_id: str) -> set[str]:
     return {r["event_id"] for r in rows}
 
 
+def attendance(user_id: str) -> dict[str, str]:
+    """event_id -> checked_in_at, for one student"""
+    rows = _rows(get_supabase().table("attendance").select("event_id, checked_in_at").eq("user_id", user_id).execute())
+    return {r["event_id"]: r["checked_in_at"] for r in rows}
+
+
 def check_in(user_id: str, event_id: str) -> bool:
     """Returns False if the user was already checked in."""
     if event_id in attended_ids(user_id):
@@ -215,6 +262,11 @@ def user_email(user_id: str) -> str | None:
     except Exception:  # unknown user, or auth admin API unavailable
         return None
     return getattr(getattr(res, "user", None), "email", None)
+
+
+def unlog_notification(user_id: str, kind: str, ref_id: str) -> None:
+    """Give the slot back when nothing could be delivered, so the next run tries again."""
+    get_supabase().table("notification_log").delete().match({"user_id": user_id, "type": kind, "ref_id": ref_id}).execute()
 
 
 def log_notification(user_id: str, kind: str, ref_id: str) -> bool:
@@ -255,6 +307,13 @@ def buildings() -> list[dict]:
     rows = _rows(get_supabase().table("buildings").select("id, code, name, lat, lng").execute())
     _cache["buildings"] = (time.time(), rows)
     return rows
+
+
+def get_org(org_id: str) -> dict | None:
+    if not is_uuid(org_id):
+        return None
+    rows = _rows(get_supabase().table("orgs").select("*").eq("id", org_id).limit(1).execute())
+    return rows[0] if rows else None
 
 
 def find_org(name: str | None) -> dict | None:

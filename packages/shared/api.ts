@@ -43,9 +43,11 @@ import type {
   FlyerUploadResponse,
   ItemSearchParams,
   ItemSearchResponse,
+  MyCheckinsResponse,
   MyComplaintsResponse,
   MyEventsResponse,
   NotifyPrefs,
+  PerksResponse,
   RewardsProgressResponse,
   SaveEventRequest,
   SaveEventResponse,
@@ -198,10 +200,12 @@ export function createApi(opts: ApiOptions) {
     deals: {
       search: (params: DealSearchParams = {}) => request<DealSearchResponse>("GET", "/api/deals/search", undefined, { ...params }),
       create: (req: CreateDealRequest) => request<CreateDealResponse>("POST", "/api/deals", req),
-      vote: (id: string, stillActive: boolean) => request<DealVoteResponse>("POST", `/api/deals/${id}/vote`, { still_active: stillActive }),
+      vote: (id: string, stillActive: boolean | null) => request<DealVoteResponse>("POST", `/api/deals/${id}/vote`, { still_active: stillActive }),
     },
     rewards: {
       progress: () => request<RewardsProgressResponse>("GET", "/api/rewards/progress"),
+      perks: () => request<PerksResponse>("GET", "/api/rewards/perks"),
+      checkins: () => request<MyCheckinsResponse>("GET", "/api/rewards/checkins"),
     },
     feed: () => request<FeedResponse>("GET", "/api/feed"),
     notify: {

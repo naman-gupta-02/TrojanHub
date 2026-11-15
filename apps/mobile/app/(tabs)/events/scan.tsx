@@ -70,7 +70,8 @@ export default function ScanScreen() {
     setError(null);
     const perm = fromCamera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return setError(fromCamera ? 'Camera access is needed to snap the flyer.' : 'Photo access is needed to pick a flyer.');
-    const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.8 };
+    // base64: the photo goes to the scanner inline as a data: URL (expo/fetch can't upload {uri} files)
+    const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.5, base64: true };
     const res = fromCamera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
     if (res.canceled || !res.assets[0]) return;
     const asset = res.assets[0];
@@ -78,8 +79,9 @@ export default function ScanScreen() {
     setStage('reading');
     setStep(0);
     try {
-      const { image_url } = await api.flyers.upload({ uri: asset.uri, name: asset.fileName ?? 'flyer.jpg', type: asset.mimeType ?? 'image/jpeg' });
-      setFlyerUrl(image_url.startsWith('data:') ? null : image_url);
+      if (!asset.base64) throw new Error("Couldn't read that photo. Try another one.");
+      const image_url = `data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}`;
+      setFlyerUrl(image_url); // the API stores it in the flyers bucket when the event is posted
       setStep(1);
       const result = await api.flyers.scan({ image_url });
       setStep(2);
@@ -119,10 +121,10 @@ export default function ScanScreen() {
   async function submit(force = false) {
     setError(null);
     if (form.title.trim().length < 3) return setError('Add a title (at least 3 characters).');
-    const starts = fromLocalInput(form.starts_at);
-    const ends = fromLocalInput(form.ends_at);
+    const starts = fromLocalInput(form.starts_at.trim());
+    const ends = fromLocalInput(form.ends_at.trim());
     if (kind === 'event' && !starts) return setError('When does it start? Use YYYY-MM-DD HH:MM.');
-    if (form.ends_at && !ends) return setError('End time should look like YYYY-MM-DD HH:MM.');
+    if (form.ends_at.trim() && !ends) return setError('End time should look like YYYY-MM-DD HH:MM.');
     if (alreadyEnded(kind, form)) return; // the banner explains; the server refuses it too
     setSaving(true);
     try {
@@ -140,7 +142,7 @@ export default function ScanScreen() {
           freebie_desc: form.has_freebie ? form.freebie_desc || null : null,
           register_url: form.register_url || null,
           ticket_url: form.ticket_url || null,
-          tickets_open_at: fromLocalInput(form.tickets_open_at),
+          tickets_open_at: fromLocalInput(form.tickets_open_at.trim()),
           org_name: form.org_name || null,
           flyer_url: flyerUrl,
           force,
@@ -155,6 +157,7 @@ export default function ScanScreen() {
           link: form.register_url || null,
           starts_at: starts,
           expires_at: ends,
+          force,
         });
         router.replace('/events?tab=deals');
       }
@@ -249,9 +252,13 @@ export default function ScanScreen() {
                 <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.gold, backgroundColor: '#FFF8DB', padding: spacing.md, gap: spacing.sm }} accessibilityRole="alert">
                   <Text style={s.cardTitle}>👀 This might already be posted</Text>
                   <Text style={{ color: colors.ink }}>
-                    We found <Text style={{ fontWeight: '700' }}>{duplicate.title}</Text>. Posting it twice splits the RSVPs.
+                    We found <Text style={{ fontWeight: '700' }}>{duplicate.title}</Text>. {kind === 'event' ? 'Posting it twice splits the RSVPs.' : 'Posting it twice clutters the Deals list.'}
                   </Text>
-                  <Button title="View existing event" onPress={() => router.replace({ pathname: '/events/[id]', params: { id: duplicate.id } })} />
+                  {kind === 'event' ? (
+                    <Button title="View existing event" onPress={() => router.replace({ pathname: '/events/[id]', params: { id: duplicate.id } })} />
+                  ) : (
+                    <Button title="See it on Deals" onPress={() => router.replace('/events?tab=deals')} />
+                  )}
                   <Button title="It's different, post anyway" kind="secondary" onPress={() => submit(true)} busy={saving} />
                 </View>
               )}
@@ -260,10 +267,10 @@ export default function ScanScreen() {
                 <TextInput value={form.title} onChangeText={(v) => set('title', v)} style={s.input} />
               </Field>
               <Field label={kind === 'event' ? 'Starts (YYYY-MM-DD HH:MM)' : 'Starts (optional)'} {...flag('starts_at')}>
-                <TextInput value={form.starts_at.replace('T', ' ')} onChangeText={(v) => set('starts_at', v.trim().replace(' ', 'T'))} placeholder="2026-11-20 19:00" placeholderTextColor={colors.muted} style={s.input} />
+                <TextInput value={form.starts_at.replace('T', ' ')} onChangeText={(v) => set('starts_at', v.replace(' ', 'T'))} placeholder="2026-11-20 19:00" placeholderTextColor={colors.muted} style={s.input} />
               </Field>
               <Field label={kind === 'event' ? 'Ends' : 'Expires'} {...flag('ends_at')}>
-                <TextInput value={form.ends_at.replace('T', ' ')} onChangeText={(v) => set('ends_at', v.trim().replace(' ', 'T'))} placeholder="2026-11-20 21:00" placeholderTextColor={colors.muted} style={s.input} />
+                <TextInput value={form.ends_at.replace('T', ' ')} onChangeText={(v) => set('ends_at', v.replace(' ', 'T'))} placeholder="2026-11-20 21:00" placeholderTextColor={colors.muted} style={s.input} />
               </Field>
 
               {kind === 'event' ? (
@@ -305,7 +312,7 @@ export default function ScanScreen() {
                   </Field>
                   {(form.ticket_url || form.tickets_open_at) && (
                     <Field label="Tickets go on sale (YYYY-MM-DD HH:MM)" {...flag('tickets_open_at')}>
-                      <TextInput value={form.tickets_open_at.replace('T', ' ')} onChangeText={(v) => set('tickets_open_at', v.trim().replace(' ', 'T'))} placeholderTextColor={colors.muted} style={s.input} />
+                      <TextInput value={form.tickets_open_at.replace('T', ' ')} onChangeText={(v) => set('tickets_open_at', v.replace(' ', 'T'))} placeholderTextColor={colors.muted} style={s.input} />
                     </Field>
                   )}
                 </>
