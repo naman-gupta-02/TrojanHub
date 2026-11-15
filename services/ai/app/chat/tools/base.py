@@ -30,4 +30,5 @@ def pacific(iso: str | None) -> str | None:
     if not iso:
         return None
     dt = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(LA)
-    return dt.strftime("%a %b %-d, %-I:%M %p PT").replace(":00 ", " ")
+    hour = dt.hour % 12 or 12  # no "%-d" / "%-I": they crash on Windows
+    return f"{dt:%a %b} {dt.day}, {hour}:{dt:%M %p} PT".replace(":00 ", " ")

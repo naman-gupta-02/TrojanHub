@@ -89,7 +89,8 @@ CONFIRM_LINE = "I drafted that for you. Check the card below, then tap Confirm t
 
 
 def _today() -> str:
-    return datetime.now(LA).strftime("%A, %B %-d, %Y")
+    now = datetime.now(LA)  # no "%-d": it crashes on Windows
+    return f"{now:%A, %B} {now.day}, {now.year}"
 
 
 async def _llm_step(messages: list[dict], allow_tools: bool) -> AsyncIterator[tuple[str, Any]]:
