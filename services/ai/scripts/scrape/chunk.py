@@ -1,7 +1,10 @@
 """Split crawled pages into chunks (ARCHITECTURE.md §7.1, step 4).
 
-~500 tokens per chunk, 80 tokens overlap, cut at heading boundaries. Each chunk starts with the
-page title and section so it makes sense on its own. Contacts are extracted per chunk.
+~180-220 tokens per chunk with ~40 tokens overlap, cut at heading boundaries. That is smaller than
+the 500 in ARCHITECTURE.md on purpose: the embedding model (all-MiniLM-L6-v2) only reads the
+first 256 tokens, so anything after that in a bigger chunk would be invisible to search.
+Each chunk starts with the page title and section so it makes sense on its own. Contacts are
+extracted per chunk.
 
 Run from services/ai (after crawl.py):
     python -m scripts.scrape.chunk
@@ -17,9 +20,9 @@ from pathlib import Path
 from scripts.scrape.extract_contacts import extract_contacts
 
 OUT_DIR = Path(__file__).resolve().parent / "out"
-TARGET_WORDS = 375  # ~500 tokens
-OVERLAP_WORDS = 60  # ~80 tokens
-MIN_WORDS = 25  # tiny trailing pieces get merged into the previous chunk
+TARGET_WORDS = 180  # budget per chunk, in approximate tokens (see _n); header adds ~15 more
+OVERLAP_WORDS = 40
+MIN_WORDS = 30  # tiny trailing pieces get merged into the previous chunk
 
 HEADING = re.compile(r"^(#{1,4})\s+(.*)$")
 
@@ -52,23 +55,34 @@ def sections(text: str) -> list[tuple[str, str]]:
     return out
 
 
+_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_TOKEN = re.compile(r"\w+|[^\w\s]")
+
+
+def _n(text: str) -> int:
+    """Approximate token count: words + punctuation marks, ignoring link URLs (they aren't embedded)."""
+    return len(_TOKEN.findall(_LINK.sub(r"\1", text)))
+
+
 def _paragraphs(body: str) -> list[str]:
-    """Blank-line separated blocks; very long blocks are split by words."""
+    """Blank-line separated blocks; blocks over the budget are split at word boundaries."""
     out: list[str] = []
     for para in re.split(r"\n\s*\n", body):
         para = para.strip()
         if not para:
             continue
-        words = para.split(" ")
-        while len(words) > TARGET_WORDS:
-            out.append(" ".join(words[:TARGET_WORDS]))
-            words = words[TARGET_WORDS:]
-        out.append(" ".join(words))
+        if _n(para) <= TARGET_WORDS:
+            out.append(para)
+            continue
+        piece: list[str] = []
+        for word in para.split(" "):
+            piece.append(word)
+            if _n(" ".join(piece)) >= TARGET_WORDS:
+                out.append(" ".join(piece))
+                piece = []
+        if piece:
+            out.append(" ".join(piece))
     return out
-
-
-def _n(text: str) -> int:
-    return len(text.split())
 
 
 def chunk_page(page: dict) -> list[dict]:

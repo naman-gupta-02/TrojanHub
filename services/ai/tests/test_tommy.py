@@ -65,6 +65,12 @@ class FakeLLM:
         return gen()
 
 
+@pytest.fixture(autouse=True)
+def local_index_only(monkeypatch):
+    """Tests use the local RAG index, never the team's Supabase project."""
+    monkeypatch.setattr(settings, "supabase_url", "")
+
+
 @pytest.fixture
 def client():
     return TestClient(app)
@@ -102,7 +108,8 @@ def test_pantry_answer_cites_real_source(client, llm):
     assert types[0] == "tool_call" and types[1] == "tool_result" and types[-1] == "done"
     result = events[1]["result"]
     assert result["sources"][0]["url"] == PANTRY
-    assert any("10:00 AM" in h for h in result["sources"][0]["contacts"]["hours"])
+    # the whole (small) pantry page comes back, so the hours are in one of its sections
+    assert any("10:00 AM" in h for src in result["sources"] for h in src["contacts"]["hours"])
     sources = next(e for e in events if e["type"] == "sources")["sources"]
     assert [s["url"] for s in sources] == [PANTRY]  # only the cited one
     assert "couldn't verify" not in answer_of(events)

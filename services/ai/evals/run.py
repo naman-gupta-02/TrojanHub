@@ -21,10 +21,16 @@ from pathlib import Path
 from app.rag import retrieve as R
 
 QUESTIONS = Path(__file__).resolve().parent / "chat_questions.jsonl"
+# Ways Tommy may decline a question USC pages can't answer (instead of guessing)
+DECLINES = ("couldn't find", "could not find", "don't have", "do not have", "can't help", "cannot help", "not able to", "outside what")
+
+
+ONLY: set[str] | None = None  # set by --only id1,id2
 
 
 def load() -> list[dict]:
-    return [json.loads(l) for l in QUESTIONS.open() if l.strip()]
+    qs = [json.loads(l) for l in QUESTIONS.open() if l.strip()]
+    return [q for q in qs if q["id"] in ONLY] if ONLY else qs
 
 
 def run_retrieval(threshold: float, verbose: bool = True) -> dict:
@@ -85,13 +91,19 @@ async def run_chat() -> None:
         urls = [s["url"] for s in sources]
         need = q.get("expected_facts", []) + q.get("expected_contacts", [])
         problems = []
-        if q["expected_url"] and q["expected_url"] not in urls:
+        missing = [f for f in need if f not in answer]
+        # A different official page with the same fact is fine; the source only matters when
+        # there is no expected fact to check, or the fact is missing.
+        if q["expected_url"] and q["expected_url"] not in urls and (missing or not need):
             problems.append("expected source not cited")
-        problems += [f"missing '{f}'" for f in need if f not in answer]
+        if q["expected_url"] and not urls:
+            problems.append("no sources shown")
+        problems += [f"missing '{f}'" for f in missing]
         bad = unverified_contacts(answer, " ".join(s["snippet"] for s in sources))
         problems += [f"unverified contact {b}" for b in bad]
-        if q["expected_url"] is None and "couldn't find" not in answer.lower():
-            problems.append("should have said it couldn't find it")
+        plain = answer.lower().replace("\u2019", "'")  # models often write curly apostrophes
+        if q["expected_url"] is None and not any(p in plain for p in DECLINES):
+            problems.append("should have said it couldn't find / can't help with it")
         passed += not problems
         print(f"{'PASS' if not problems else 'FAIL'}  {q['id']}: {'; '.join(problems)}\n      {answer[:160]!r}")
     print(f"\n{passed}/{len(qs)} passed")
@@ -101,7 +113,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--chat", action="store_true", help="run the full agent (needs an LLM)")
     ap.add_argument("--sweep", action="store_true", help="try several thresholds")
+    ap.add_argument("--only", help="comma-separated question ids, e.g. pantry_hours,its_phone")
     args = ap.parse_args()
+    if args.only:
+        ONLY = set(args.only.split(","))
     if args.chat:
         asyncio.run(run_chat())
     elif args.sweep:

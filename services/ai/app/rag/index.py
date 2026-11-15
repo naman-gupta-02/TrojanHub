@@ -36,6 +36,9 @@ class LocalIndex:
             raise RuntimeError("chunks.jsonl and index.npz are out of sync: rerun scripts.scrape.embed")
         return cls(chunks, vectors)
 
+    def page(self, url: str) -> list[dict]:
+        return [c for c in self.chunks if c["url"] == url]
+
     def search(self, query_vec: np.ndarray, k: int) -> list[tuple[dict, float]]:
         sims = self.vectors @ query_vec
         top = np.argsort(-sims)[:k]
@@ -67,3 +70,22 @@ def vector_search(query_vec: np.ndarray, k: int) -> list[tuple[dict, float]]:
     if idx is None:
         raise RuntimeError("No index yet. Run: python -m scripts.scrape.crawl && python -m scripts.scrape.chunk && python -m scripts.scrape.embed")
     return idx.search(query_vec, k)
+
+
+def page_chunks(url: str) -> list[dict]:
+    """Every chunk of one page (used to hand Tommy a whole small page).
+
+    The local index keeps page order. doc_chunks has no chunk_index column yet, so Supabase
+    returns them in insertion order, which is not guaranteed (fine for the LLM).
+    """
+    if settings.supabase_url and settings.supabase_service_role_key:
+        try:
+            from app.core.supabase import get_supabase
+
+            res = get_supabase().table("doc_chunks").select("url,title,section,content,contacts").eq("url", url).execute()
+            if res.data:
+                return res.data
+        except Exception as e:  # noqa: BLE001
+            print(f"[rag] Supabase page lookup failed, using local index: {e}")
+    idx = local_index()
+    return idx.page(url) if idx else []

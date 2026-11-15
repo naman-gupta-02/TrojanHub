@@ -43,6 +43,23 @@ python -m pytest tests -q          # agent + tools + confirm flow with a fake LL
 
 `/api/chat` uses the real agent as soon as `LLM_MODEL` is set, and the mock stream until then.
 
+## Which LLM? (set 3 lines in `services/ai/.env`)
+
+Anything with an OpenAI-compatible `/v1/chat/completions` works. Check it with
+`python -m scripts.smoke_llm` (plain chat, tool calling, image).
+
+| Option | `.env` | Notes |
+|---|---|---|
+| **Codex shim** (ChatGPT login, no Hermes) | `LLM_BASE_URL=http://127.0.0.1:8787/v1`, `LLM_API_KEY=codex-shim`, `LLM_MODEL=gpt-5.6-luna` | Run `codex login` once, then `python -m scripts.codex_shim` in its own terminal. Best answers. ~8-10 s per LLM call (Tommy makes 2+ per reply), no real streaming, counts against that person's Codex limits. Local only: never expose it. |
+| **Ollama** (local model) | `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_API_KEY=ollama`, `LLM_MODEL=<model from ollama list>` | Free, private, offline. A small model scored 16/20 on the chat evals. Slow on a laptop. Images must be base64. |
+| **Backup API key** | `LLM_BASE_URL=<provider URL>`, `LLM_API_KEY=<key>`, `LLM_MODEL=<model>` | Fastest and real streaming. Keep one ready for the demo. |
+| none | leave `LLM_MODEL=` empty | `/api/chat` streams the mock. |
+
+Evals against a slow or rate-limited model: `python -m evals.run --chat --only pantry_hours,its_phone`.
+
+Chunks are ~180-220 tokens (not the 500 in ARCHITECTURE.md §7.1) because the embedding model
+only reads 256 tokens. After changing chunking, rerun `chunk` and `embed`.
+
 ## Layout
 
 | Folder | Owner |
