@@ -23,7 +23,7 @@ reporting a found item or turning a flyer photo into a calendar event.
 ## Tech stack
 
 - **Mobile:** React Native + Expo (expo-router)
-- **Web:** Next.js 14+ (App Router) + Tailwind + shadcn/ui, in USC cardinal `#990000` and gold `#FFCC00`
+- **Web:** Next.js 16 (App Router) + Tailwind + shadcn/ui, in USC cardinal `#990000` and gold `#FFCC00`
 - **Shared:** `packages/shared` holds the TypeScript types, zod schemas and a typed API client
 - **Backend:** Supabase (Postgres + pgvector, Auth with @usc.edu magic links, Storage, Realtime)
 - **AI service:** FastAPI (Python 3.11) on Replit
