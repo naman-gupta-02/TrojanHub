@@ -3,7 +3,7 @@ import type { NotifyCategory, NotifyPrefs } from '@trojanhub/shared/types';
 import { colors, fontSize, radius, spacing } from '@trojanhub/shared/theme';
 import { Link } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Switch, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { CATEGORIES, DealCard, Empty, ErrorBox, EventCard, Loading, SectionTitle, errorMessage, fmtTime, s, untilLabel, useApi } from '@/components/events/kit';
 import { api } from '@/lib/api';
@@ -39,7 +39,7 @@ export default function HomeScreen() {
           {feed.data ? `${freeEvents} free event${freeEvents === 1 ? '' : 's'} and ${freeDeals} limited-time deal${freeDeals === 1 ? '' : 's'} today.` : 'Finding the best things near you…'}
         </Text>
         <Link href="/events/scan" asChild>
-          <Pressable style={[s.button, { backgroundColor: colors.gold, borderColor: colors.gold, alignSelf: 'flex-start', marginTop: spacing.xs }]} accessibilityRole="button">
+          <Pressable style={StyleSheet.flatten([s.button, { backgroundColor: colors.gold, borderColor: colors.gold, alignSelf: 'flex-start', marginTop: spacing.xs }])} accessibilityRole="button">
             <Text style={[s.buttonText, { color: colors.ink }]}>📸 Scan a flyer</Text>
           </Pressable>
         </Link>
@@ -57,7 +57,7 @@ export default function HomeScreen() {
       {mine.data && next.length === 0 && <Text style={s.sub}>Save an event and it shows up here, with a reminder 30 minutes before.</Text>}
       {next.map(({ event, registered }) => (
         <Link key={event.id} href={{ pathname: '/events/[id]', params: { id: event.id } }} asChild>
-          <Pressable style={[s.card, { alignItems: 'center' }]} accessibilityRole="button">
+          <Pressable style={StyleSheet.flatten([s.card, { alignItems: 'center' }])} accessibilityRole="button">
             <View style={{ flex: 1 }}>
               <Text style={s.cardTitle} numberOfLines={1}>
                 {event.title}
@@ -73,7 +73,7 @@ export default function HomeScreen() {
 
       {closest && (
         <Link href="/events?tab=rewards" asChild>
-          <Pressable style={[s.card, { flexDirection: 'column' }]} accessibilityRole="button">
+          <Pressable style={StyleSheet.flatten([s.card, { flexDirection: 'column' }])} accessibilityRole="button">
             <Text style={s.reason}>REWARDS</Text>
             <Text style={s.cardTitle}>{closest.program.name}</Text>
             <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.line, overflow: 'hidden' }} accessibilityRole="progressbar" accessibilityValue={{ now: closest.attended, max: closest.required, min: 0 }}>
