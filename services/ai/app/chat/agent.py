@@ -85,9 +85,17 @@ async def _llm_step(messages: list[dict], allow_tools: bool) -> AsyncIterator[tu
 
 
 def _cited(answer: str, sources: list[dict]) -> list[dict]:
+    """Source chips = only the pages the answer used: cited as [n], or linked by URL.
+    If the answer used none (e.g. "I couldn't find that"), show no chips rather than
+    unrelated search results."""
     nums = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
-    cited = [s for s in sources if s["n"] in nums]
-    return cited or sources[:2]  # nothing cited -> still show the top sources as chips
+    used: list[dict] = []
+    seen: set[str] = set()
+    for s in sources:
+        if (s["n"] in nums or s["url"] in answer or s["url"].rstrip("/") in answer) and s["url"] not in seen:
+            used.append(s)
+            seen.add(s["url"])
+    return used
 
 
 async def run_turn(

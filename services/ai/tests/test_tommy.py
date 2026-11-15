@@ -326,3 +326,11 @@ def test_free_food_on_campus_finds_the_freebies(client, llm):
         tool_step("search_deals", query="free food on campus today"), text_step("Free boba!"))
     results = [e["result"] for e in chat(client, "any free food on campus today?") if e["type"] == "tool_result"]
     assert results[0]["events"] and results[1]["deals"]
+
+
+def test_chips_show_only_pages_the_answer_used():
+    sources = [{"n": 1, "url": "https://a.usc.edu/"}, {"n": 2, "url": "https://b.usc.edu/x/"}, {"n": 3, "url": "https://c.usc.edu/"}]
+    assert agent._cited("Open now [2].", sources) == [sources[1]]
+    assert agent._cited("See [the page](https://c.usc.edu/) for details.", sources) == [sources[2]]
+    assert agent._cited("I couldn't find that on USC's pages.", sources) == []  # no unrelated chips
+    assert agent._cited("Both [1][1] and [2].", sources) == sources[:2]

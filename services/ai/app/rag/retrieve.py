@@ -20,6 +20,7 @@ THRESHOLD = 0.40  # tuned on evals/chat_questions.jsonl (see evals/run.py)
 KEYWORD_WEIGHT = 0.10  # share of query words found in the chunk
 TITLE_WEIGHT = 0.10  # share of query words found in the page title / section
 INTENT_WEIGHT = 0.08  # the question asks for hours / a contact and the chunk has one
+INTENT_MARGIN = 0.06  # ...but only for pages within this much of the best page's score
 MAX_PER_URL = 2  # keep variety: at most 2 chunks from the same page
 SMALL_PAGE = 5  # if the best page has this many chunks or fewer, include all of them
 OTHER_PAGES = 2  # ...plus this many chunks from other pages
@@ -59,8 +60,21 @@ ALIASES = {
 }
 
 
+# How students say it -> words the official pages use (appended to the search, never shown).
+PHRASES = [
+    (re.compile(r"\bcounts?\b.{0,40}\b(towards?|for)\b.{0,25}\b(degree|graduat\w*|major|minor|ge|requirements?)\b", re.I),
+     "STARS report degree requirements progress toward degree completion"),
+    (re.compile(r"\b(course|class)\b.{0,30}\b(substitut\w*|waive\w*|exception)\b", re.I),
+     "petition academic department exception"),
+    (re.compile(r"\bon track to graduate|\bgraduation check\b|\bdegree audit\b", re.I),
+     "STARS report degree progress"),
+]
+
+
 def expand(query: str) -> str:
-    return re.sub(r"\b(" + "|".join(ALIASES) + r")\b", lambda m: ALIASES[m.group(1)], query)
+    q = re.sub(r"\b(" + "|".join(ALIASES) + r")\b", lambda m: ALIASES[m.group(1)], query)
+    extra = [words for pattern, words in PHRASES if pattern.search(query)]
+    return q + (" " + " ".join(extra) if extra else "")
 
 
 def _terms(text: str) -> set[str]:
@@ -94,10 +108,17 @@ def retrieve(query: str, keep: int = KEEP, threshold: float = THRESHOLD) -> Retr
     # 2) Score pages: a page's best chunk, plus the intent boost if ANY of its candidate chunks
     #    has the hours / contact asked for (so a page isn't punished because its best-matching
     #    section and its hours sit in different chunks).
-    page_boost: dict[str, float] = {}
+    #    Only pages already close to the best match get it: "who do I contact" must not lift an
+    #    off-topic page just because it lists a phone number.
+    best_by_page: dict[str, float] = {}
+    for chunk, score in base:
+        best_by_page[chunk["url"]] = max(best_by_page.get(chunk["url"], 0.0), score)
+    top = max(best_by_page.values(), default=0.0)
+    page_boost: dict[str, float] = {url: 0.0 for url in best_by_page}
     for chunk, _ in base:
-        b = intent_boost(q, chunk.get("contacts") or {})
-        page_boost[chunk["url"]] = max(page_boost.get(chunk["url"], 0.0), b)
+        if best_by_page[chunk["url"]] >= top - INTENT_MARGIN:
+            b = intent_boost(q, chunk.get("contacts") or {})
+            page_boost[chunk["url"]] = max(page_boost[chunk["url"]], b)
     scored = sorted(((c, s + page_boost[c["url"]]) for c, s in base), key=lambda x: -x[1])
 
     def to_source(n: int, chunk: dict, score: float) -> Source:

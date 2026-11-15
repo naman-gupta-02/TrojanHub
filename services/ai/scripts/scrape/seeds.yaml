@@ -1,5 +1,5 @@
 # Hand-picked public USC pages for Tommy's RAG index (ARCHITECTURE.md §7.1).
-# Every URL here returned HTTP 200 when checked on 2026-11-14.
+# Every URL here returned HTTP 200 when checked on 2026-11-14 (65 pages).
 # Topics are used for filtering and debugging. Add pages through a PR to p1/chatbot.
 
 pages:
@@ -63,6 +63,24 @@ pages:
   - {url: "https://transnet.usc.edu/index.php/contact-us/", topic: transportation}
   - {url: "https://transnet.usc.edu/index.php/parking-rates/", topic: transportation}
   - {url: "https://transnet.usc.edu/index.php/report-a-maintenance-issue/", topic: transportation}
+
+  # --- Academics: degree progress, petitions, transfer credit, advising (added 2026-11-14) ---
+  - {url: "https://arr.usc.edu/", topic: academics}
+  - {url: "https://arr.usc.edu/degree-progress/", topic: academics}
+  - {url: "https://arr.usc.edu/stars-report/", topic: academics}
+  - {url: "https://arr.usc.edu/petition-services/", topic: academics}
+  - {url: "https://arr.usc.edu/transfer-credit-services/", topic: academics}
+  - {url: "https://arr.usc.edu/grades/", topic: academics}
+  - {url: "https://arr.usc.edu/catalogue/", topic: academics}
+  - {url: "https://catalogue.usc.edu/", topic: academics}
+  - {url: "https://usc.edu/academics/undergraduate-study/", topic: academics}
+  - {url: "https://dornsife.usc.edu/advising/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/academic-advising/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/departmental-advising/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/faqs-2/", topic: advising}
+  - {url: "https://dornsife.usc.edu/advising/what-is-academic-advising2/", topic: advising}
+  - {url: "https://viterbiundergrad.usc.edu/", topic: advising}
+  - {url: "https://viterbiundergrad.usc.edu/viterbi-undergraduate-advising/", topic: advising}
 
   # --- Student life / other offices ---
   - {url: "https://studentlife.usc.edu/", topic: student_life}

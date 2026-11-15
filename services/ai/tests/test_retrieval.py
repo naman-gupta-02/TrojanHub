@@ -38,6 +38,12 @@ def local_only(monkeypatch):
         ("who do I call about a lost wallet", "213-740-9759"),
         ("lost and found email", "lostandfound@dps.usc.edu"),
         ("how do I report a phishing email", "phishing@usc.edu"),
+        ("I want to confirm if a course counts towards my graduation credit, who do I contact?", "STARS"),
+        ("where do I see my STARS report?", "Experience USC"),
+        ("how do I get a course substitution approved", "petition"),
+        ("will my community college classes transfer to USC?", "articulation"),
+        ("how is my Dornsife advisor assigned", "declared major"),
+        ("who is my academic advisor in Viterbi", "academic advisor"),
     ],
 )
 def test_fact_is_in_sources(question, fact):
@@ -61,6 +67,12 @@ def test_small_page_comes_back_whole():
     """Any pantry question gets every section of the (small) pantry page: process, location, hours."""
     text = " ".join(s.content for s in retrieve("what do I need to bring to the food pantry?").sources)
     assert "USCard" in text and "King Hall" in text and "10:00 AM" in text
+
+
+def test_student_phrasing_is_expanded():
+    assert "STARS" in expand("does this class count towards my graduation?")
+    assert "petition" in expand("can I get a course substitution")
+    assert expand("when is the food pantry open?") == "when is the food pantry open?"
 
 
 def test_acronyms_are_expanded():
