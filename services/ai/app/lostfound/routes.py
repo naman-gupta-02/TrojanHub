@@ -5,8 +5,8 @@ GET  /items/search             ?q=&building_id=
 POST /items/search-by-image    multipart {photo}
 POST /items/{id}/claim
 
-Mock mode serves packages/shared/mocks/items_*.json. Replace each `if settings.use_mocks` branch
-with the real logic (clip.py, tiers.py) when it's ready; keep the response shapes from types.ts.
+USE_MOCKS=true serves packages/shared/mocks/items_*.json. Otherwise the real logic runs:
+items.py (post), search.py (search), claim.py (claim). Response shapes follow types.ts.
 """
 
 import re
@@ -17,11 +17,10 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import get_user_id
 from app.core.config import settings
-from app.core.mocks import load_mock, not_built
-from app.lostfound import items, search
+from app.core.mocks import load_mock
+from app.lostfound import claim, items, search
 
 router = APIRouter(tags=["lost & found (P2)"])
-OWNER = "P2 Vishwa"
 
 _VALUABLE_WORDS = re.compile(r"\b(airpods?|earbuds?|phone|iphone|laptop|macbook|tablet|ipad|wallet|id|keys?|card|watch|glasses)\b")
 _VALUABLE_ITEM_ID = "c0000000-0000-0000-0000-000000000002"
@@ -81,4 +80,7 @@ async def search_items_by_image(photo: UploadFile = File(...), user_id: str = De
 async def claim_item(item_id: str, user_id: str = Depends(get_user_id)) -> dict:
     if settings.use_mocks:
         return load_mock("items_claim_valuable" if item_id == _VALUABLE_ITEM_ID else "items_claim")
-    raise not_built(OWNER)
+    try:
+        return await run_in_threadpool(claim.claim_item, item_id, user_id)
+    except items.ItemError as e:
+        raise HTTPException(e.status, detail={"code": e.code, "message": e.message}) from e
