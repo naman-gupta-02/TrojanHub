@@ -21,6 +21,11 @@ class P3Settings(BaseSettings):
     public_web_url: str = "http://localhost:3000"
     # Resend's shared sender works without a verified domain (delivers to the account owner only)
     digest_from: str = "TrojanHub <onboarding@resend.dev>"
+    # Built-in scheduler (notify/scheduler.py). Turn on for ONE instance only, e.g. the demo laptop.
+    cron_inline: bool = False
+    digest_hour: int = 8  # LA time
+    reminders_every_min: int = 10
+    cron_tick_seconds: int = 60
 
 
 @lru_cache

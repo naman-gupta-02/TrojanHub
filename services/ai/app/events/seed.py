@@ -173,8 +173,9 @@ def ensure_demo_user(sb) -> None:
             "id": DEMO_USER_ID, "email": "demo.trojan@usc.edu", "email_confirm": True,
             "user_metadata": {"name": "Tommy Trojan"},
         })
+    # usg_admin so the on-stage "Send digest now" button works once USE_MOCKS is off
     sb.table("profiles").upsert({
-        "id": DEMO_USER_ID, "name": "Tommy Trojan", "interests": ["career", "free_food", "cultural"],
+        "id": DEMO_USER_ID, "name": "Tommy Trojan", "role": "usg_admin", "interests": ["career", "free_food", "cultural"],
         "notify_email": True, "notify_push": True, "notify_categories": [],
     }).execute()
 

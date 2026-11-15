@@ -45,6 +45,7 @@ import type {
   ItemSearchResponse,
   MyComplaintsResponse,
   MyEventsResponse,
+  NotifyPrefs,
   RewardsProgressResponse,
   SaveEventRequest,
   SaveEventResponse,
@@ -206,6 +207,8 @@ export function createApi(opts: ApiOptions) {
     notify: {
       digestNow: (req: DigestNowRequest = {}) => request<DigestNowResponse>("POST", "/api/notify/digest-now", req),
       digestPreviewUrl: () => url("/api/notify/digest/preview"),
+      prefs: () => request<NotifyPrefs>("GET", "/api/me/notify"),
+      updatePrefs: (patch: Partial<NotifyPrefs>) => request<NotifyPrefs>("PATCH", "/api/me/notify", patch),
     },
 
     // P4 Complaints & Admin

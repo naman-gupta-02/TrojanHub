@@ -1,12 +1,13 @@
 "use client";
 // P3 Parnavi: home feed ("3 things for you today", free today, your next events, rewards teaser, freebie alerts).
-import type { FeedItem } from "@trojanhub/shared/types";
+import type { FeedItem, NotifyCategory, NotifyPrefs } from "@trojanhub/shared/types";
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 
 import { api } from "@/lib/api";
 
 import {
+  CATEGORIES,
   CardSkeleton,
   DealCard,
   EmptyState,
@@ -133,9 +134,95 @@ export function HomeFeed() {
           )}
 
           <DigestCard />
+          <AlertSettings />
         </aside>
       </div>
     </div>
+  );
+}
+
+const ALERT_CATEGORIES: { value: NotifyCategory; label: string }[] = [
+  ...CATEGORIES.filter((c) => c.value !== "other").map((c) => ({ value: c.value as NotifyCategory, label: `${c.emoji} ${c.label}` })),
+  { value: "deals", label: "🎁 Deals" },
+];
+
+/** Alert settings: email / push on or off, and which categories. Saves on every change. */
+function AlertSettings() {
+  const prefs = useApi(() => api.notify.prefs());
+  const [saved, setSaved] = useState<string | null>(null);
+
+  async function update(patch: Partial<NotifyPrefs>) {
+    if (!prefs.data) return;
+    const optimistic = { ...prefs.data, ...patch };
+    prefs.setData(optimistic);
+    try {
+      prefs.setData(await api.notify.updatePrefs(patch));
+      setSaved("Saved");
+    } catch (e) {
+      setSaved(errorMessage(e));
+    }
+  }
+
+  const p = prefs.data;
+  const cats = new Set(p?.notify_categories ?? []);
+  const toggleCat = (c: NotifyCategory) => {
+    const next = new Set(cats);
+    if (next.has(c)) next.delete(c);
+    else next.add(c);
+    return update({ notify_categories: [...next] });
+  };
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-labelledby="alert-settings">
+      <p id="alert-settings" className="font-bold">
+        ⚙️ Alert settings
+      </p>
+      {!p && !prefs.error && <p className="text-sm text-muted">Loading…</p>}
+      {prefs.error && <p className="text-sm text-danger">{prefs.error}</p>}
+      {p && (
+        <>
+          <Switch label="Morning email digest" checked={p.notify_email} onChange={(v) => update({ notify_email: v })} />
+          <Switch label="Phone notifications" checked={p.notify_push} onChange={(v) => update({ notify_push: v })} />
+          <div className="space-y-1.5 border-t border-line pt-3">
+            <p className="text-xs font-semibold text-muted">Only tell me about {cats.size === 0 && <span className="font-normal">(everything, pick to narrow)</span>}</p>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Alert categories">
+              {ALERT_CATEGORIES.map((c) => (
+                <button
+                  key={c.value}
+                  onClick={() => toggleCat(c.value)}
+                  aria-pressed={cats.has(c.value)}
+                  className={`min-h-9 rounded-full border px-3 text-xs font-semibold transition ${cats.has(c.value) ? "border-cardinal bg-cardinal text-white" : "border-line bg-surface text-ink hover:border-ink"}`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {saved && (
+            <p role="status" className={`text-xs ${saved === "Saved" ? "text-success" : "text-danger"}`}>
+              {saved}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function Switch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3">
+      <span className="text-sm">{label}</span>
+      <button
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked ? "bg-cardinal" : "bg-line"}`}
+      >
+        <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${checked ? "left-6" : "left-1"}`} />
+      </button>
+    </label>
   );
 }
 

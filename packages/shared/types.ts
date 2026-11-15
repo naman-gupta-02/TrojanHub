@@ -443,6 +443,15 @@ export interface DigestNowResponse {
   skipped_reason?: string;
 }
 
+/** GET / PATCH /me/notify. Empty notify_categories = everything. "deals" covers one-time deals. */
+export type NotifyCategory = EventCategory | "deals";
+
+export interface NotifyPrefs {
+  notify_email: boolean;
+  notify_push: boolean;
+  notify_categories: NotifyCategory[];
+}
+
 export interface EventSearchParams {
   q?: string;
   from?: ISODate;
