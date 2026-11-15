@@ -88,7 +88,6 @@ export const EDITABLE: Record<string, { key: string; label: string; kind: "text"
   log_complaint: [
     { key: "building", label: "Building", kind: "text" },
     { key: "room", label: "Room", kind: "text" },
-    { key: "summary", label: "What's wrong", kind: "text" },
     { key: "anonymous", label: "Report anonymously", kind: "bool" },
   ],
   report_found_item: [
