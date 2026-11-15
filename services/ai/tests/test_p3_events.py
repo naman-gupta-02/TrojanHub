@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # so `import app` works from anywhere
 
-from app.core.auth import get_user_id  # noqa: E402
+from app.core.auth import get_user_id, require_signed_in  # noqa: E402
 from app.events import dedupe, feed, flyer, ics, routes, store  # noqa: E402
 from app.events.dates import iso, now_utc  # noqa: E402
 from app.main import app  # noqa: E402
@@ -171,6 +171,7 @@ def client(monkeypatch):
     monkeypatch.setattr(store, "get_org", lambda oid: None)
     who = {"id": ALICE}
     app.dependency_overrides[get_user_id] = lambda: who["id"]
+    app.dependency_overrides[require_signed_in] = lambda: who["id"]
     c = TestClient(app)
     c.who = who
     yield c

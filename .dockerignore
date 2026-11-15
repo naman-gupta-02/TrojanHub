@@ -1,0 +1,15 @@
+# Keep the AI service image small, and never copy secrets into it.
+**/.env
+**/.env.*
+!**/.env.example
+.git
+node_modules
+apps
+**/node_modules
+**/.next
+**/.expo
+services/ai/.venv
+**/__pycache__
+**/*.pyc
+services/ai/scripts/scrape/out
+services/ai/tests

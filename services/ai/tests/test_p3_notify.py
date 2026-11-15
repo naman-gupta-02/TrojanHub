@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # so `import app` works from anywhere
 
-from app.core.auth import get_user_id, require_admin  # noqa: E402
+from app.core.auth import get_user_id, require_admin, require_signed_in  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.events import store  # noqa: E402
 from app.events.dates import iso, now_utc  # noqa: E402
@@ -123,7 +123,8 @@ def client(fake_db, monkeypatch):
     notify_routes._digest_now_sent.clear()
     who = {"id": ALICE}
     app.dependency_overrides[get_user_id] = lambda: who["id"]
-    app.dependency_overrides[require_admin] = lambda: who["id"]  # what USE_MOCKS=true does
+    app.dependency_overrides[require_admin] = lambda: who["id"]  # what a mocked admin feature does
+    app.dependency_overrides[require_signed_in] = lambda: who["id"]
     c = TestClient(app)
     c.who, c.updates, c.sends = who, updates, sends
     yield c

@@ -33,7 +33,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.auth import ADMIN_ROLES, get_user_id
+from app.core.auth import ADMIN_ROLES, get_user_id, require_signed_in
 from app.core.config import settings
 from app.core.mocks import load_mock
 from app.core.supabase import get_supabase
@@ -213,7 +213,7 @@ def _flyer_url_for_event(flyer_url: str | None, user_id: str) -> str | None:
 
 
 @router.post("/flyers/upload")
-async def upload_flyer(photo: UploadFile = File(...), user_id: str = Depends(get_user_id)) -> dict:
+async def upload_flyer(photo: UploadFile = File(...), user_id: str = Depends(require_signed_in)) -> dict:
     """Stores the photo in the public `flyers` bucket -> {image_url} for /flyers/scan and events.flyer_url.
     Server-side, so it works before login (Storage only lets signed-in users upload directly)."""
     data = await photo.read()
@@ -226,7 +226,7 @@ async def upload_flyer(photo: UploadFile = File(...), user_id: str = Depends(get
 
 
 @router.post("/flyers/scan")
-def scan_flyer(req: FlyerScanRequest, user_id: str = Depends(get_user_id)) -> dict:
+def scan_flyer(req: FlyerScanRequest, user_id: str = Depends(require_signed_in)) -> dict:
     if not llm_live():
         return load_mock("flyers_scan")
     return flyer.scan(req.image_url)
@@ -299,7 +299,7 @@ def get_event(event_id: str, user_id: str = Depends(get_user_id)) -> dict:
 
 
 @router.post("/events", status_code=201)
-def create_event(req: EventCreate, user_id: str = Depends(get_user_id)) -> dict:
+def create_event(req: EventCreate, user_id: str = Depends(require_signed_in)) -> dict:
     if not db_live():
         return {"event": load_mock("events_search")["events"][0]}
     starts, ends = parse_ts(req.starts_at), parse_ts(req.ends_at)
@@ -350,7 +350,7 @@ def create_event(req: EventCreate, user_id: str = Depends(get_user_id)) -> dict:
 
 
 @router.post("/events/{event_id}/save")
-def save_event(event_id: str, req: SaveEventRequest | None = None, user_id: str = Depends(get_user_id)) -> dict:
+def save_event(event_id: str, req: SaveEventRequest | None = None, user_id: str = Depends(require_signed_in)) -> dict:
     event = _event_or_404(event_id)
     if db_live():
         try:
@@ -361,7 +361,7 @@ def save_event(event_id: str, req: SaveEventRequest | None = None, user_id: str 
 
 
 @router.delete("/events/{event_id}/save")
-def unsave_event(event_id: str, user_id: str = Depends(get_user_id)) -> dict:
+def unsave_event(event_id: str, user_id: str = Depends(require_signed_in)) -> dict:
     _event_or_404(event_id)
     if db_live():
         store.unsave_event(user_id, event_id)
@@ -386,7 +386,7 @@ def get_checkin_code(event_id: str, user_id: str = Depends(get_user_id)) -> dict
 
 
 @router.post("/events/{event_id}/checkin")
-def check_in(event_id: str, req: CheckinRequest | None = None, user_id: str = Depends(get_user_id)) -> dict:
+def check_in(event_id: str, req: CheckinRequest | None = None, user_id: str = Depends(require_signed_in)) -> dict:
     """Valid with the organizer's QR code, or by tapping "I'm here" while the event is on."""
     event = _event_or_404(event_id)
     code_ok = bool(req and req.code) and hmac.compare_digest(req.code.strip().upper(), checkin_code(event_id))
@@ -420,7 +420,7 @@ def search_deals(q: str | None = None, active: bool = True, user_id: str = Depen
 
 
 @router.post("/deals", status_code=201)
-def create_deal(req: DealCreate, user_id: str = Depends(get_user_id)) -> dict:
+def create_deal(req: DealCreate, user_id: str = Depends(require_signed_in)) -> dict:
     if not db_live():
         return {"deal": load_mock("deals_search")["deals"][0]}
     starts, expires = parse_ts(req.starts_at), parse_ts(req.expires_at)
@@ -444,7 +444,7 @@ _votes: dict[tuple[str, str], bool] = {}
 
 
 @router.post("/deals/{deal_id}/vote")
-def vote_deal(deal_id: str, req: DealVoteRequest, user_id: str = Depends(get_user_id)) -> dict:
+def vote_deal(deal_id: str, req: DealVoteRequest, user_id: str = Depends(require_signed_in)) -> dict:
     if not db_live():
         return {"still_active_votes": 4}
     deal = store.get_deal(deal_id)

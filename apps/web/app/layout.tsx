@@ -2,6 +2,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+
+import { AuthStatus } from "@/components/AuthStatus";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -37,9 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 {n.label}
               </Link>
             ))}
-            <Link href="/login" className="ml-auto rounded-md bg-gold px-3 py-1.5 text-sm font-semibold text-ink">
-              Sign in
-            </Link>
+            <AuthStatus />
           </nav>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>

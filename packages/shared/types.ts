@@ -224,6 +224,7 @@ export interface Complaint {
   corrected_department: Department | null;
   forwarded_to: string | null;
   forwarded_at: ISODate | null;
+  photo_path: string | null; // private storage path; never sent to students (see has_photo)
   created_at: ISODate;
 }
 
@@ -506,10 +507,12 @@ export interface FeedResponse {
 export interface ComplaintRequest {
   text: string;
   building_id?: UUID;
+  building?: string; // building code or name ("GFS", "Leavey Library") when it isn't in `text`; building_id wins
   room?: string;
   anonymous?: boolean;
   confirm?: boolean; // false/absent = draft only; true = create/merge the ticket
   source?: ComplaintSource; // "chat" when Tommy files it
+  photo?: string; // optional photo of the problem: a data: URL (or a link into our Supabase Storage); stored privately on confirm
 }
 
 export interface ComplaintDraft {
@@ -533,10 +536,11 @@ export interface ComplaintDraftResponse {
 export interface ComplaintConfirmResponse {
   ticket: Ticket;
   route_url: string | null;
+  photo_saved?: boolean;
 }
 
 export interface MyComplaintsResponse {
-  complaints: { complaint: Complaint; ticket: Ticket | null }[];
+  complaints: { complaint: Omit<Complaint, "photo_path"> & { has_photo: boolean }; ticket: Ticket | null }[];
 }
 
 export interface UpvoteResponse {
@@ -567,6 +571,7 @@ export interface AdminComplaintRow {
   status: TicketStatus;
   urgency: Urgency;
   report_count: number;
+  photo_url: string | null; // signed link to the private photo, valid ~1 hour
 }
 
 export interface AdminComplaintPatch {

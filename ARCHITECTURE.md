@@ -65,7 +65,8 @@ sequenceDiagram
 1. **Contracts first (Phase 0).** Every endpoint's request and response types live in
    `packages/shared/types.ts`, with a mock JSON in `packages/shared/mocks/`.
 2. **P1 builds against mocks.** Until P2's real `/items` is up, Tommy's tool wrapper reads the
-   mock. Switching is one env flag: `USE_MOCKS=false`.
+   mock. Switching is one env flag: `USE_MOCKS=false`, or per feature with
+   `REAL_FEATURES=complaints,admin` while the rest stay mocked.
 3. **One wrapper per tool** in `services/ai/app/chat/tools/<feature>.py`. Each one only calls
    HTTP and maps fields, with no feature logic. If an owner changes their endpoint, only that file
    changes.
@@ -236,7 +237,7 @@ and `created_at timestamptz default now()` unless noted.
 | Table | Key columns |
 |---|---|
 | `tickets` | `building_id`, `room`, `department`, `category`, `urgency` (`low`/`medium`/`high`/`safety`), `summary`, `status` (`reported`/`sent`/`resolved`), `report_count`, `route_url`, `embedding vector(<D>)` |
-| `complaints` | `ticket_id`, `reporter_id` (nullable = anonymous), `raw_text`, `room`, `building_id` |
+| `complaints` | `ticket_id`, `reporter_id` (nullable = anonymous), `raw_text`, `room`, `building_id`, `photo_path` (in the private `complaint-photos` bucket) |
 | `routes` | `department`, `category`, `form_url`, `email` (seeded from public USC pages) |
 
 **RLS basics:** anyone logged in can read public rows. Users can only edit their own rows. Only org admins can post events as verified. `dept_admin`/`usg_admin` can read admin views. The AI service uses the **service role key**, which only ever lives on the server.
@@ -280,10 +281,10 @@ real endpoint exists.
 ### P4 — Complaints & Admin
 | Method | Path | Body → Response |
 |---|---|---|
-| POST | `/complaints` | `{text, building_id?, room?, anonymous?: bool, confirm?: bool}` → `{draft:{department, category, urgency, building, room, summary}, duplicate_ticket?: {id, report_count}, safety?: {dps_phone, message}}`. With `confirm:true` → `{ticket, route_url}` |
+| POST | `/complaints` | `{text, building_id?, building?, room?, anonymous?: bool, confirm?: bool, photo?}` (`building` = code or name, for when it isn't in `text`; `building_id` wins). Optional `photo` (data: URL): checked on every call, stored privately only on `confirm:true` → `{draft:{department, category, urgency, building, room, summary}, duplicate_ticket?: {id, report_count}, safety?: {dps_phone, message}}`. With `confirm:true` → `{ticket, route_url}` |
 | GET | `/complaints/mine` | → user's complaints + ticket status |
 | POST | `/tickets/{id}/upvote` | → `{report_count}` |
-| GET | `/admin/complaints` | `?department=&building=&from=` → `[{logged_at, text, building, room, source, ai_department, ai_confidence, ai_reason, corrected_department, forwarded_to, forwarded_at, status, report_count}]` |
+| GET | `/admin/complaints` | `?department=&building=&from=` → `[{logged_at, text, building, room, source, ai_department, ai_confidence, ai_reason, corrected_department, forwarded_to, forwarded_at, status, report_count, photo_url}]` (`photo_url` = signed link, ~1 hour) |
 | PATCH | `/admin/complaints/{id}` | `{corrected_department?, status?}` → updated row |
 | GET | `/admin/stats` | → `{total, forwarded_pct, routing_accuracy_pct, by_department:[…], by_building:[…]}` |
 | GET | `/admin/tickets.csv` | → CSV export |
@@ -302,13 +303,18 @@ real endpoint exists.
    `trafilatura`, keep `title`, `url`, and headings.
 3. `extract_contacts.py`: use a regex to pull emails, phone numbers, and hours from each page into
    `contacts jsonb`. **The bot quotes contact details only from here and never generates them.**
-4. `chunk.py`: about 500 tokens per chunk with 80 tokens of overlap, cut at heading boundaries,
-   and each chunk starts with the page title and section.
+4. `chunk.py`: about 180–220 tokens per chunk with 40 tokens of overlap, cut at heading
+   boundaries, and each chunk starts with the page title and section. (Not 500: MiniLM only
+   reads the first 256 tokens, so anything past that in a chunk is invisible to search.)
 5. `embed.py`: embed each chunk and upsert it into `doc_chunks`. Rerun the script to refresh.
 
 **Retrieve (`rag/retrieve.py`)**
-- Embed the query → pgvector cosine top-k=8 → optional keyword boost (Postgres `tsvector`) →
-  keep the top 4 with similarity ≥ threshold (tune on the eval set, start at 0.35 for MiniLM).
+- Expand campus acronyms (IT, DPS…) → embed the query → pgvector cosine top-k=40 → re-rank with
+  keyword and title overlap, plus a boost when the question asks for hours or a contact and the
+  page has one → keep results with score ≥ threshold (0.40, tuned on the eval set).
+- If the best page is small (≤ 5 chunks), return the whole page plus up to 2 chunks from other
+  pages, so the answer doesn't depend on which section matched. Otherwise keep the top 4
+  (max 2 per page).
 - If nothing passes the threshold → return `no_answer`. The bot then says "I couldn't find
   that" and links the closest page.
 
@@ -422,7 +428,7 @@ details match the source page exactly.
 - **Types first:** P4 generates `packages/shared/types.ts` from the schema (`supabase gen types`)
   at the end of Phase 0. API request and response types sit next to them.
 - **Env vars** (`.env.example`): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-  (AI service only), `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `USE_MOCKS`, `EMBED_MODEL`, `RESEND_API_KEY`,
+  (AI service only), `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `USE_MOCKS`, `REAL_FEATURES`, `EMBED_MODEL`, `RESEND_API_KEY`,
   `CRON_SECRET`, `EXPO_PUBLIC_API_URL`, `NEXT_PUBLIC_API_URL`.
 - **Dates:** stored as UTC `timestamptz`, shown in America/Los_Angeles.
 - **Errors:** `{error: {code, message}}` with the matching HTTP status.
@@ -445,7 +451,7 @@ Times are Pacific. "Done when" = the checkpoint everyone confirms at the sync.
 ### Phase 0: Setup and contracts · Sat 1:30 → 3:00 PM
 | Person | Tasks |
 |---|---|
-| **P1 Naman** | Set up ChatGPT Edu → Hermes proxy and smoke-test chat, tools and images (§13.2). Get the backup API key. Write `seeds.yaml` (40–80 USC URLs). Start `crawl.py`. Write the mock SSE stream for `/chat`. Draft the system prompt and tool list. |
+| **P1 Naman** | Set up ChatGPT Edu → Codex shim and smoke-test chat, tools and images (§13.2). Get the backup API key. Write `seeds.yaml` (40–80 USC URLs). Start `crawl.py`. Write the mock SSE stream for `/chat`. Draft the system prompt and tool list. |
 | **P2 Vishwa** | Install `open_clip` on Replit and check that it loads within memory limits. Mock `/items` + `/items/search`. Seed 6–10 `dropoff_points` (verify locations from official DPS/IT pages). |
 | **P3 Parnavi** | Mock `/flyers/scan`, `/events/search`, `/feed`. Collect 5 real flyers (photos) for testing. Draft the `events`/`deals`/`reward_programs` tables. |
 | **P4 Jaymin** | Create the monorepo, Supabase project, `vector` extension, core tables, auth (@usc.edu). Set up the Expo + Next.js shells with tab/nav placeholders, a FastAPI skeleton deployed on Replit, `.env.example`, and `types.ts`. |
@@ -511,7 +517,7 @@ Times are Pacific. "Done when" = the checkpoint everyone confirms at the sync.
 
 ---
 
-## 13. AI tools: ChatGPT Edu, Codex and Hermes
+## 13. AI tools: ChatGPT Edu and Codex
 
 There are two separate uses of AI here. Keep them apart.
 
@@ -529,30 +535,45 @@ assistant**:
 - Every teammate's coding agent reads `CLAUDE.md` / `AGENTS.md` rules: ask first, no AI
   co-author lines in commits.
 
-### 13.2 Running the app during the hackathon: Naman's ChatGPT Edu (via Hermes)
+### 13.2 Running the app during the hackathon: Naman's ChatGPT Edu (via the Codex shim)
 For the demo, Tommy, the flyer reader and the complaint sorter run on **Naman's own USC
 ChatGPT Edu login**, with a paid API key as backup.
 
-**Setup (Naman, Phase 0, first hour)**
+We don't use Hermes. `services/ai/scripts/codex_shim.py` is a small local server that exposes an
+OpenAI-compatible `/v1/chat/completions` and answers each request by running the official
+`codex exec` CLI. It never reads the login token or calls ChatGPT's private endpoints.
+
+**Setup (Naman)**
 1. `codex login` → Sign in with ChatGPT → USC Edu workspace. If USC hasn't enabled Codex for the
    workspace, this fails. Switch to the backup key right away and tell the team.
-2. `hermes auth add openai-codex` → sign in with the same account.
-3. `hermes proxy` → note the local OpenAI-compatible URL it prints.
-4. In `services/ai/.env` on Naman's laptop: `LLM_BASE_URL=<that URL>`, `LLM_MODEL=<model Hermes lists>`.
-5. Smoke test: one plain chat call, one **tool-calling** call, one **image** call (flyer). If
-   tools or images don't work through the proxy, use the backup key for those calls only
-   (`LLM_VISION_BASE_URL` / `LLM_VISION_API_KEY`).
+2. `cd services/ai && python -m scripts.codex_shim` → serves `http://127.0.0.1:8787/v1`.
+3. In `services/ai/.env` on Naman's laptop: `LLM_BASE_URL=http://127.0.0.1:8787/v1`,
+   `LLM_API_KEY=codex-shim`, `LLM_MODEL=gpt-5.6-luna` (the default model in a personal Codex
+   config may be rejected for ChatGPT accounts, so the shim always passes a model).
+4. Smoke test: `python -m scripts.smoke_llm` runs one plain chat call, one **tool-calling** call
+   and one **image** call. If something doesn't work through the shim, use the backup key for
+   those calls only (`LLM_VISION_BASE_URL` / `LLM_VISION_API_KEY`).
+
+**Limits to plan around**
+- About 8–10 seconds per LLM call, and Tommy makes 2 or more per reply. There is no real
+  streaming: the answer arrives at once and the shim replays it in small pieces.
+- Each call uses roughly 11k tokens of that person's Codex limits (Codex adds its own prompt).
+- Other options with the same three `.env` lines: a local Ollama model (free, offline, slower,
+  weaker) or the backup API key (fastest). See `services/ai/README.md`.
 
 **Rules**
-- **The AI service runs on Naman's laptop** (the proxy is local). Phones and the web app reach it
+- **The AI service runs on Naman's laptop** (the shim is local). Phones and the web app reach it
   over the same Wi-Fi at `http://<naman-laptop-ip>:8000` → set `EXPO_PUBLIC_API_URL` /
   `NEXT_PUBLIC_API_URL`.
-- **Never expose the proxy publicly** (no ngrok or tunnels to it). It's Naman's personal account.
+- **Never expose the shim itself publicly** (no ngrok or tunnels to it). It binds to 127.0.0.1 only.
+- **Hosted on Replit (Naman's decision, 2026-11-14):** the Replit app runs the shim internally with
+  Naman's login from the `CODEX_AUTH_JSON` secret, so the hosted Tommy uses his ChatGPT Edu quota.
+  See DEPLOY.md for the costs and how to limit Tommy to signed-in students.
 - **Text embeddings stay local** (MiniLM) and **CLIP stays local**. Neither goes through
   ChatGPT Edu.
 - **Replit copy:** Jaymin also deploys the same FastAPI on Replit with the **backup API key**.
   That gives a public demo link for Devpost, makes us eligible for Best Use of Replit, and is the
-  failover if the laptop or proxy dies.
+  failover if the laptop or shim dies.
 - **Backup key:** keep about $5 of credit on a normal API key in `.env.backup`. Switching = swap
   `.env` and restart (under 1 minute). The recorded backup video covers the rest.
 - **Before relying on it, ask an AI@USC mentor** if using a personal ChatGPT Edu login for the demo
